@@ -31,7 +31,7 @@ struct ContentView: View {
                     viewModel.chooseAndUploadFiles(to: dropTargetDirectoryPath)
                 },
                 onOpenDirectory: { openDirectory($0) },
-                onDownloadFile: { viewModel.download($0) }
+                onDownloadItem: { viewModel.download($0) }
             )
 
             BreadcrumbBarView(
@@ -52,7 +52,7 @@ struct ContentView: View {
                 childrenForDirectory: { viewModel.directoryTreeStore.childrenForDirectory(path: $0) },
                 isDirectoryLoading: { viewModel.directoryTreeStore.isDirectoryLoading(path: $0) },
                 onExpandDirectory: { viewModel.directoryTreeStore.ensureLoaded(path: $0) },
-                onDownloadFile: { viewModel.download($0) },
+                onDownloadItem: { viewModel.download($0) },
                 onDropProviders: { providers in handleFileDrop(providers) }
             )
 
@@ -170,7 +170,7 @@ private struct TopBarView: View {
     let selectedFile: DroidFileItem?
     let onUpload: () -> Void
     let onOpenDirectory: (String) -> Void
-    let onDownloadFile: (DroidFileItem) -> Void
+    let onDownloadItem: (DroidFileItem) -> Void
 
     var body: some View {
         HStack(spacing: 12) {
@@ -199,9 +199,12 @@ private struct TopBarView: View {
                     Button("进入目录") {
                         onOpenDirectory(selectedFile.fullPath)
                     }
+                    Button("下载目录") {
+                        onDownloadItem(selectedFile)
+                    }
                 } else {
                     Button("下载文件") {
-                        onDownloadFile(selectedFile)
+                        onDownloadItem(selectedFile)
                     }
                     .buttonStyle(.borderedProminent)
                 }
@@ -247,7 +250,7 @@ private struct ExplorerSplitView: View {
     let childrenForDirectory: (String) -> [RemoteDirectoryNode]
     let isDirectoryLoading: (String) -> Bool
     let onExpandDirectory: (String) -> Void
-    let onDownloadFile: (DroidFileItem) -> Void
+    let onDownloadItem: (DroidFileItem) -> Void
     let onDropProviders: ([NSItemProvider]) -> Bool
 
     var body: some View {
@@ -291,14 +294,15 @@ private struct ExplorerSplitView: View {
                         if item.isDirectory {
                             onSelectDirectory(item.fullPath)
                         } else {
-                            onDownloadFile(item)
+                            onDownloadItem(item)
                         }
                     })
                     .contextMenu {
                         if item.isDirectory {
                             Button("打开") { onSelectDirectory(item.fullPath) }
+                            Button("下载目录") { onDownloadItem(item) }
                         } else {
-                            Button("下载") { onDownloadFile(item) }
+                            Button("下载文件") { onDownloadItem(item) }
                         }
                     }
                     .tag(item.id)

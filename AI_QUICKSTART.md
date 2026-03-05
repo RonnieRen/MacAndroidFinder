@@ -6,8 +6,9 @@
 Core goals:
 - Detect connected Android devices (`adb devices -l`)
 - Browse remote directories
-- Download files from Android to Mac (`adb pull`)
-- Upload files from Mac to Android (file picker + drag and drop, `adb push`)
+- Download files/folders from Android to Mac (`adb pull`)
+- Upload files/folders from Mac to Android (file picker + drag and drop, `adb push`)
+- Auto-refresh device list in background
 
 ## Project Layout
 - `DroidFinder/`:
@@ -32,17 +33,26 @@ Note: `DroidFinder/` and `Sources/DroidFinder/` are currently duplicated and in 
     - `listDirectory(deviceSerial:path:)`
     - `pullFile(deviceSerial:remotePath:localDirectory:)`
     - `pushFile(deviceSerial:localFile:remoteDirectory:)`
+  - Directory listing strategy:
+    - Primary: `adb shell ls -l -p <path>`
+    - Fallback (if parsing fails or output format differs): `adb shell ls -1 -a -p -F <path>`
+  - Upload post-action:
+    - Triggers media rescan (`cmd media rescan` then broadcast fallback)
 
 - `DroidFinderViewModel.swift`
   - App-level state:
     - devices, selected device, current path, file list (`[DroidFileItem]`), status, errors
   - Main actions:
-    - `refreshDevices()`
-    - `loadDirectory(path:)`
+    - `refreshDevices(showBusy:reloadCurrentDirectory:)`
+    - `loadDirectory(path:showBusy:)`
     - `goParent()`
     - `download(_:)`
     - `chooseAndUploadFiles(to:)`
     - `uploadLocalFiles(_:to:)`
+  - Auto-refresh:
+    - Starts a background task on init
+    - Polls every 3 seconds
+    - Refreshes devices without blocking UI
 
 - `DirectoryTreeStore` (inside `DroidFinderViewModel.swift`)
   - Lazy-load remote subdirectories
@@ -67,27 +77,32 @@ Note: `DroidFinder/` and `Sources/DroidFinder/` are currently duplicated and in 
   - Checks `adb` availability
   - Lists devices and keeps only state `device`
   - Picks first device if none selected
+  - Also runs automatically every 3 seconds (in addition to manual refresh button)
   - Left tree quick roots are:
     - `/` (label: `/`)
     - `/sdcard` (label: `Phone`)
     - `/sdcard/DCIM/Camera` (label: `Camera`)
 
 - Directory listing:
-  - Calls `adb shell ls -l -p <path>`
-  - Parses Unix-style `ls` output into file entries
+  - First attempts detailed listing via `adb shell ls -l -p <path>`
+  - If detailed parsing fails, falls back to robust simple listing via `adb shell ls -1 -a -p -F <path>`
   - Sort order:
     - directories first
     - then case-insensitive by name
 
 - Download:
   - User selects a local target folder via `NSOpenPanel`
-  - App runs `adb pull` for selected file
+  - App runs `adb pull` for selected file or directory
+  - Directory download entry points:
+    - Top bar button when a directory is selected
+    - Right list context menu (`下载目录`)
 
 - Upload:
   - Sources:
     - File picker (`NSOpenPanel`)
     - Drag-and-drop `fileURL` providers
-  - Enqueues each file and uploads sequentially with `adb push`
+  - Supports both files and local folders (recursive by `adb push`)
+  - Enqueues each entry and uploads sequentially with `adb push`
   - After each push, app triggers Android media rescan for the uploaded file path (best effort) so Gallery apps can discover new media
   - Refreshes touched remote directories after batch completion
 
@@ -105,10 +120,9 @@ Note: `DroidFinder/` and `Sources/DroidFinder/` are currently duplicated and in 
   - Tapping outside the panel closes it
 
 ## Current Limitations
-- No recursive folder upload (upload is file-based)
-- No directory download action (download is file-only)
-- Device detection is refresh-based, not USB hotplug event-driven
-- Directory parsing relies on `ls -l` text format (can vary by device shell behavior)
+- Device detection is polling-based (3-second interval), not true USB hotplug event subscription
+- Fallback directory listing mode does not provide exact file size for every entry (`sizeDescription` may be `--`)
+- Directory parsing still depends on shell `ls` behavior, but now includes fallback for better compatibility
 
 ## Build / Run
 - Xcode:

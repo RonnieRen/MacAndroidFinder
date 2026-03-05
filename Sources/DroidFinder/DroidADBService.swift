@@ -86,56 +86,115 @@ final class DroidADBService {
 
     func listDirectory(deviceSerial: String, path: String) throws -> [DroidFileItem] {
         let cleanPath = path.isEmpty ? "/" : path
-        let output = try runBridge(args: ["-s", deviceSerial, "shell", "ls", "-l", "-p", cleanPath])
-        let lines = output
-            .components(separatedBy: .newlines)
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty && !$0.hasPrefix("total") }
+        do {
+            let output = try runBridge(args: ["-s", deviceSerial, "shell", "ls", "-l", "-p", cleanPath])
+            let lines = output
+                .components(separatedBy: .newlines)
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty && !$0.hasPrefix("total") }
 
-        var items: [DroidFileItem] = []
-
-        for line in lines {
-            guard let firstChar = line.first else { continue }
-            let components = line.split(separator: " ", omittingEmptySubsequences: true)
-            guard components.count >= 8 else { continue }
-
-            let name = String(components.suffix(from: 7).joined(separator: " "))
-            if name.isEmpty { continue }
-
-            let itemType: DroidFileItem.ItemType
-            switch firstChar {
-            case "d": itemType = .directory
-            case "-": itemType = .file
-            case "l": itemType = .symlink
-            default: itemType = .unknown
+            let parsed = lines.compactMap { parseDetailedListing(line: $0, parentPath: cleanPath) }
+            if !parsed.isEmpty || lines.isEmpty {
+                return sortItems(parsed)
             }
-
-            let normalizedName = name
-                .replacingOccurrences(of: "*", with: "")
-                .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-            let fullPath: String
-            if cleanPath == "/" {
-                fullPath = "/\(normalizedName)"
-            } else {
-                fullPath = "\(cleanPath)/\(normalizedName)"
-            }
-
-            let size = String(components[4])
-
-            items.append(DroidFileItem(
-                id: fullPath,
-                name: normalizedName,
-                fullPath: fullPath,
-                type: itemType,
-                sizeDescription: size
-            ))
+        } catch {
+            // Fall through to the simpler listing format.
         }
 
-        if items.isEmpty && !lines.isEmpty {
+        let fallbackOutput = try runBridge(args: ["-s", deviceSerial, "shell", "ls", "-1", "-a", "-p", "-F", cleanPath])
+        let fallbackLines = fallbackOutput
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .filter { $0 != "." && $0 != ".." }
+
+        let items = fallbackLines.compactMap { parseSimpleListing(entry: $0, parentPath: cleanPath) }
+        if items.isEmpty && !fallbackLines.isEmpty {
             throw DroidBridgeError.parseFailed
         }
 
-        return items.sorted { lhs, rhs in
+        return sortItems(items)
+    }
+
+    private func parseDetailedListing(line: String, parentPath: String) -> DroidFileItem? {
+        guard let firstChar = line.first else { return nil }
+        let components = line.split(separator: " ", omittingEmptySubsequences: true)
+        guard components.count >= 8 else { return nil }
+
+        var name = String(components.suffix(from: 7).joined(separator: " "))
+        if name.isEmpty { return nil }
+
+        if let symlinkSeparator = name.range(of: " -> ") {
+            name = String(name[..<symlinkSeparator.lowerBound])
+        }
+
+        let normalizedName = normalizedEntryName(name)
+        guard normalizedName != "." && normalizedName != ".." && !normalizedName.isEmpty else {
+            return nil
+        }
+
+        let itemType: DroidFileItem.ItemType
+        switch firstChar {
+        case "d": itemType = .directory
+        case "-": itemType = .file
+        case "l": itemType = .symlink
+        default: itemType = .unknown
+        }
+
+        let fullPath = buildRemotePath(parentPath: parentPath, name: normalizedName)
+        let size = String(components[4])
+        return DroidFileItem(
+            id: fullPath,
+            name: normalizedName,
+            fullPath: fullPath,
+            type: itemType,
+            sizeDescription: size
+        )
+    }
+
+    private func parseSimpleListing(entry: String, parentPath: String) -> DroidFileItem? {
+        let raw = entry.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty else { return nil }
+
+        var itemType: DroidFileItem.ItemType = .file
+        if raw.hasSuffix("/") {
+            itemType = .directory
+        } else if raw.hasSuffix("@") {
+            itemType = .symlink
+        }
+
+        let normalizedName = normalizedEntryName(raw)
+        guard normalizedName != "." && normalizedName != ".." && !normalizedName.isEmpty else {
+            return nil
+        }
+
+        let fullPath = buildRemotePath(parentPath: parentPath, name: normalizedName)
+        return DroidFileItem(
+            id: fullPath,
+            name: normalizedName,
+            fullPath: fullPath,
+            type: itemType,
+            sizeDescription: "--"
+        )
+    }
+
+    private func normalizedEntryName(_ name: String) -> String {
+        var normalized = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        while let last = normalized.last, "/@*=|".contains(last) {
+            normalized.removeLast()
+        }
+        return normalized
+    }
+
+    private func buildRemotePath(parentPath: String, name: String) -> String {
+        if parentPath == "/" {
+            return "/\(name)"
+        }
+        return "\(parentPath)/\(name)"
+    }
+
+    private func sortItems(_ items: [DroidFileItem]) -> [DroidFileItem] {
+        items.sorted { lhs, rhs in
             if lhs.isDirectory != rhs.isDirectory {
                 return lhs.isDirectory && !rhs.isDirectory
             }

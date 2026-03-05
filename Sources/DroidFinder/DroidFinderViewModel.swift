@@ -225,6 +225,7 @@ final class DroidFinderViewModel: ObservableObject {
     let uploadQueueStore: UploadQueueStore
 
     private let bridgeService: DroidADBService
+    private var deviceAutoRefreshTask: Task<Void, Never>?
 
     init() {
         let service = DroidADBService()
@@ -248,13 +249,21 @@ final class DroidFinderViewModel: ObservableObject {
         Task {
             await refreshDevices()
         }
+        startDeviceAutoRefresh()
     }
 
-    func refreshDevices() async {
-        isBusy = true
-        defer { isBusy = false }
+    func refreshDevices(showBusy: Bool = true, reloadCurrentDirectory: Bool = true) async {
+        if showBusy {
+            isBusy = true
+        }
+        defer {
+            if showBusy {
+                isBusy = false
+            }
+        }
 
         do {
+            let previousSelectedDeviceID = selectedDevice?.id
             try bridgeService.checkBridgeReady()
             let bridgeInfo = bridgeService.bridgeToolPath.map { "adb: \($0)" } ?? "adb: 未找到"
             let listed = try bridgeService.listDevices().filter { $0.transportState == "device" }
@@ -268,10 +277,15 @@ final class DroidFinderViewModel: ObservableObject {
                 self.selectedDevice = listed.first
             }
 
-            directoryTreeStore.configureForDevice(serial: self.selectedDevice?.id)
+            let selectedDeviceChanged = previousSelectedDeviceID != self.selectedDevice?.id
+            if selectedDeviceChanged || directoryTreeStore.directoryTreeRoots.isEmpty {
+                directoryTreeStore.configureForDevice(serial: self.selectedDevice?.id)
+            }
 
             if self.selectedDevice != nil {
-                try loadDirectory(path: currentPath)
+                if reloadCurrentDirectory || selectedDeviceChanged || files.isEmpty {
+                    try loadDirectory(path: currentPath, showBusy: false)
+                }
             } else {
                 files = []
                 statusMessage = "没有可用设备（\(bridgeInfo)）。请连接手机并开启 USB 调试。"
@@ -282,14 +296,20 @@ final class DroidFinderViewModel: ObservableObject {
         }
     }
 
-    func loadDirectory(path: String) throws {
+    func loadDirectory(path: String, showBusy: Bool = true) throws {
         guard let selectedDevice else {
             files = []
             return
         }
 
-        isBusy = true
-        defer { isBusy = false }
+        if showBusy {
+            isBusy = true
+        }
+        defer {
+            if showBusy {
+                isBusy = false
+            }
+        }
 
         do {
             files = try bridgeService.listDirectory(deviceSerial: selectedDevice.id, path: path)
@@ -315,7 +335,6 @@ final class DroidFinderViewModel: ObservableObject {
     }
 
     func download(_ item: DroidFileItem) {
-        guard !item.isDirectory else { return }
         guard let selectedDevice else { return }
 
         let panel = NSOpenPanel()
@@ -332,11 +351,11 @@ final class DroidFinderViewModel: ObservableObject {
         Task {
             do {
                 try bridgeService.pullFile(deviceSerial: selectedDevice.id, remotePath: item.fullPath, localDirectory: targetDir)
-                statusMessage = "已下载：\(item.name)"
+                statusMessage = item.isDirectory ? "已下载目录：\(item.name)" : "已下载：\(item.name)"
                 errorMessage = nil
             } catch {
                 errorMessage = error.localizedDescription
-                statusMessage = "下载失败"
+                statusMessage = item.isDirectory ? "目录下载失败" : "下载失败"
             }
             isBusy = false
         }
@@ -344,7 +363,7 @@ final class DroidFinderViewModel: ObservableObject {
 
     func chooseAndUploadFiles(to remoteDirectory: String) {
         let panel = NSOpenPanel()
-        panel.canChooseDirectories = false
+        panel.canChooseDirectories = true
         panel.canChooseFiles = true
         panel.allowsMultipleSelection = true
         panel.prompt = "上传到 \(remoteDirectory)"
@@ -355,5 +374,16 @@ final class DroidFinderViewModel: ObservableObject {
 
     func uploadLocalFiles(_ urls: [URL], to remoteDirectory: String) {
         uploadQueueStore.enqueue(urls: urls, remoteDirectory: remoteDirectory, deviceSerial: selectedDevice?.id)
+    }
+
+    private func startDeviceAutoRefresh() {
+        deviceAutoRefreshTask?.cancel()
+        deviceAutoRefreshTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                guard let self else { return }
+                await self.refreshDevices(showBusy: false, reloadCurrentDirectory: false)
+            }
+        }
     }
 }
