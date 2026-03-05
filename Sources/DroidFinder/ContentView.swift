@@ -2,10 +2,11 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct ContentView: View {
-    @EnvironmentObject var viewModel: AppViewModel
+    @EnvironmentObject var viewModel: DroidFinderViewModel
     @State private var selectedItemID: String?
     @State private var selectedSidebarPath: String?
     @State private var isDropTargeted = false
+    @State private var isUploadQueuePanelVisible = true
 
     var body: some View {
         VStack(spacing: 10) {
@@ -25,7 +26,10 @@ struct ContentView: View {
                 },
                 canGoParent: viewModel.currentPath != "/",
                 selectedFile: selectedFile,
-                onUpload: { viewModel.chooseAndUploadFiles(to: dropTargetDirectoryPath) },
+                onUpload: {
+                    isUploadQueuePanelVisible = true
+                    viewModel.chooseAndUploadFiles(to: dropTargetDirectoryPath)
+                },
                 onOpenDirectory: { openDirectory($0) },
                 onDownloadFile: { viewModel.download($0) }
             )
@@ -52,20 +56,36 @@ struct ContentView: View {
                 onDropProviders: { providers in handleFileDrop(providers) }
             )
 
-            if !viewModel.uploadQueueStore.uploadQueue.isEmpty {
-                UploadQueuePanelView(
-                    uploadQueue: viewModel.uploadQueueStore.uploadQueue,
-                    progress: viewModel.uploadQueueStore.uploadProgress,
-                    onClearFinished: { viewModel.uploadQueueStore.clearFinished() }
-                )
-            }
-
             FooterBarView(
                 isBusy: viewModel.isBusy || viewModel.uploadQueueStore.isUploading,
                 statusMessage: viewModel.statusMessage
             )
         }
         .padding(16)
+        .overlay {
+            if shouldShowUploadQueuePanel {
+                ZStack(alignment: .bottomTrailing) {
+                    Color.black.opacity(0.001)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            isUploadQueuePanelVisible = false
+                        }
+
+                    UploadQueuePanelView(
+                        uploadQueue: viewModel.uploadQueueStore.uploadQueue,
+                        progress: viewModel.uploadQueueStore.uploadProgress,
+                        onClearFinished: { viewModel.uploadQueueStore.clearFinished() },
+                        onClose: { isUploadQueuePanelVisible = false }
+                    )
+                    .padding(16)
+                }
+            }
+        }
+        .onChange(of: viewModel.uploadQueueStore.uploadQueue.isEmpty) { isEmpty in
+            if isEmpty {
+                isUploadQueuePanelVisible = true
+            }
+        }
         .alert("错误", isPresented: Binding(
             get: { viewModel.errorMessage != nil },
             set: { _ in viewModel.errorMessage = nil }
@@ -76,7 +96,7 @@ struct ContentView: View {
         }
     }
 
-    private var selectedFile: AndroidFileItem? {
+    private var selectedFile: DroidFileItem? {
         guard let selectedItemID else { return nil }
         return viewModel.files.first(where: { $0.id == selectedItemID })
     }
@@ -106,6 +126,10 @@ struct ContentView: View {
         return viewModel.currentPath
     }
 
+    private var shouldShowUploadQueuePanel: Bool {
+        isUploadQueuePanelVisible && !viewModel.uploadQueueStore.uploadQueue.isEmpty
+    }
+
     private func openDirectory(_ path: String) {
         try? viewModel.loadDirectory(path: path)
         selectedSidebarPath = path
@@ -127,6 +151,7 @@ struct ContentView: View {
 
                 guard let url else { return }
                 DispatchQueue.main.async {
+                    isUploadQueuePanelVisible = true
                     viewModel.uploadLocalFiles([url], to: dropTargetDirectoryPath)
                 }
             }
@@ -136,16 +161,16 @@ struct ContentView: View {
 }
 
 private struct TopBarView: View {
-    let devices: [AndroidDevice]
-    let selectedDevice: AndroidDevice?
-    let onDeviceSelected: (AndroidDevice?) -> Void
+    let devices: [DroidDevice]
+    let selectedDevice: DroidDevice?
+    let onDeviceSelected: (DroidDevice?) -> Void
     let onRefresh: () -> Void
     let onGoParent: () -> Void
     let canGoParent: Bool
-    let selectedFile: AndroidFileItem?
+    let selectedFile: DroidFileItem?
     let onUpload: () -> Void
     let onOpenDirectory: (String) -> Void
-    let onDownloadFile: (AndroidFileItem) -> Void
+    let onDownloadFile: (DroidFileItem) -> Void
 
     var body: some View {
         HStack(spacing: 12) {
@@ -214,7 +239,7 @@ private struct BreadcrumbBarView: View {
 private struct ExplorerSplitView: View {
     let directoryRoots: [RemoteDirectoryNode]
     @Binding var selectedSidebarPath: String?
-    let files: [AndroidFileItem]
+    let files: [DroidFileItem]
     @Binding var selectedItemID: String?
     @Binding var isDropTargeted: Bool
     let dropTargetDirectoryPath: String
@@ -222,12 +247,12 @@ private struct ExplorerSplitView: View {
     let childrenForDirectory: (String) -> [RemoteDirectoryNode]
     let isDirectoryLoading: (String) -> Bool
     let onExpandDirectory: (String) -> Void
-    let onDownloadFile: (AndroidFileItem) -> Void
+    let onDownloadFile: (DroidFileItem) -> Void
     let onDropProviders: ([NSItemProvider]) -> Bool
 
     var body: some View {
         HSplitView {
-            List(selection: $selectedSidebarPath) {
+            List {
                 Section("目录树") {
                     ForEach(directoryRoots) { root in
                         DirectoryTreeNodeView(
@@ -259,13 +284,16 @@ private struct ExplorerSplitView: View {
                             .frame(width: 90, alignment: .trailing)
                     }
                     .contentShape(Rectangle())
-                    .onTapGesture(count: 2) {
+                    .onTapGesture {
+                        selectedItemID = item.id
+                    }
+                    .simultaneousGesture(TapGesture(count: 2).onEnded {
                         if item.isDirectory {
                             onSelectDirectory(item.fullPath)
                         } else {
                             onDownloadFile(item)
                         }
-                    }
+                    })
                     .contextMenu {
                         if item.isDirectory {
                             Button("打开") { onSelectDirectory(item.fullPath) }
@@ -298,7 +326,7 @@ private struct ExplorerSplitView: View {
         }
     }
 
-    private func iconName(for item: AndroidFileItem) -> String {
+    private func iconName(for item: DroidFileItem) -> String {
         switch item.type {
         case .directory:
             return "folder"
@@ -316,6 +344,7 @@ private struct UploadQueuePanelView: View {
     let uploadQueue: [UploadTaskItem]
     let progress: Double
     let onClearFinished: () -> Void
+    let onClose: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -323,6 +352,12 @@ private struct UploadQueuePanelView: View {
                 Text("上传队列")
                     .font(.headline)
                 Spacer()
+                Button(action: onClose) {
+                    Image(systemName: "xmark")
+                        .font(.caption)
+                }
+                .buttonStyle(.plain)
+                .help("关闭")
                 Text("\(completedCount)/\(uploadQueue.count)")
                     .font(.caption)
                     .foregroundStyle(.secondary)

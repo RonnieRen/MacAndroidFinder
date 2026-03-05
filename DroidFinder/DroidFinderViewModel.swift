@@ -31,13 +31,13 @@ struct UploadTaskItem: Identifiable {
 final class DirectoryTreeStore: ObservableObject {
     @Published var directoryTreeRoots: [RemoteDirectoryNode] = []
 
-    private let adb: ADBService
+    private let bridgeService: DroidADBService
     private var selectedDeviceSerial: String?
     private var directoryChildrenCache: [String: [RemoteDirectoryNode]] = [:]
     private var loadingDirectoryPaths: Set<String> = []
 
-    init(adb: ADBService) {
-        self.adb = adb
+    init(bridgeService: DroidADBService) {
+        self.bridgeService = bridgeService
     }
 
     func configureForDevice(serial: String?) {
@@ -50,9 +50,11 @@ final class DirectoryTreeStore: ObservableObject {
             return
         }
 
-        directoryTreeRoots = ["/", "/sdcard"].map { path in
-            RemoteDirectoryNode(path: path, name: path == "/" ? "/" : (path as NSString).lastPathComponent)
-        }
+        directoryTreeRoots = [
+            RemoteDirectoryNode(path: "/", name: "/"),
+            RemoteDirectoryNode(path: "/sdcard", name: "Phone"),
+            RemoteDirectoryNode(path: "/sdcard/DCIM/Camera", name: "Camera")
+        ]
 
         for root in directoryTreeRoots {
             ensureLoaded(path: root.path)
@@ -94,7 +96,7 @@ final class DirectoryTreeStore: ObservableObject {
         let items = try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
                 do {
-                    let result = try self.adb.listDirectory(deviceSerial: serial, path: path)
+                    let result = try self.bridgeService.listDirectory(deviceSerial: serial, path: path)
                     continuation.resume(returning: result)
                 } catch {
                     continuation.resume(throwing: error)
@@ -120,11 +122,11 @@ final class UploadQueueStore: ObservableObject {
     var onStatus: ((String, String?) -> Void)?
     var onBatchCompleted: ((Set<String>) -> Void)?
 
-    private let adb: ADBService
+    private let bridgeService: DroidADBService
     private var workerTask: Task<Void, Never>?
 
-    init(adb: ADBService) {
-        self.adb = adb
+    init(bridgeService: DroidADBService) {
+        self.bridgeService = bridgeService
     }
 
     func enqueue(urls: [URL], remoteDirectory: String, deviceSerial: String?) {
@@ -183,14 +185,14 @@ final class UploadQueueStore: ObservableObject {
     }
 
     private func pushFileAsync(deviceSerial: String, localURL: URL, remoteDirectory: String) async throws {
-        let adbService = self.adb
+        let uploadBridgeService = self.bridgeService
         try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
                 _ = localURL.startAccessingSecurityScopedResource()
                 defer { localURL.stopAccessingSecurityScopedResource() }
 
                 do {
-                    try adbService.pushFile(deviceSerial: deviceSerial, localFile: localURL, remoteDirectory: remoteDirectory)
+                    try uploadBridgeService.pushFile(deviceSerial: deviceSerial, localFile: localURL, remoteDirectory: remoteDirectory)
                     continuation.resume(returning: ())
                 } catch {
                     continuation.resume(throwing: error)
@@ -210,11 +212,11 @@ final class UploadQueueStore: ObservableObject {
 }
 
 @MainActor
-final class AppViewModel: ObservableObject {
-    @Published var devices: [AndroidDevice] = []
-    @Published var selectedDevice: AndroidDevice?
+final class DroidFinderViewModel: ObservableObject {
+    @Published var devices: [DroidDevice] = []
+    @Published var selectedDevice: DroidDevice?
     @Published var currentPath: String = "/sdcard"
-    @Published var files: [AndroidFileItem] = []
+    @Published var files: [DroidFileItem] = []
     @Published var statusMessage: String = "准备就绪"
     @Published var errorMessage: String?
     @Published var isBusy = false
@@ -222,13 +224,13 @@ final class AppViewModel: ObservableObject {
     let directoryTreeStore: DirectoryTreeStore
     let uploadQueueStore: UploadQueueStore
 
-    private let adb: ADBService
+    private let bridgeService: DroidADBService
 
     init() {
-        let service = ADBService()
-        self.adb = service
-        self.directoryTreeStore = DirectoryTreeStore(adb: service)
-        self.uploadQueueStore = UploadQueueStore(adb: service)
+        let service = DroidADBService()
+        self.bridgeService = service
+        self.directoryTreeStore = DirectoryTreeStore(bridgeService: service)
+        self.uploadQueueStore = UploadQueueStore(bridgeService: service)
 
         uploadQueueStore.onStatus = { [weak self] message, error in
             self?.statusMessage = message
@@ -253,9 +255,9 @@ final class AppViewModel: ObservableObject {
         defer { isBusy = false }
 
         do {
-            try adb.checkADBReady()
-            let adbInfo = adb.adbPath.map { "adb: \($0)" } ?? "adb: 未找到"
-            let listed = try adb.listDevices().filter { $0.transportState == "device" }
+            try bridgeService.checkBridgeReady()
+            let bridgeInfo = bridgeService.bridgeToolPath.map { "adb: \($0)" } ?? "adb: 未找到"
+            let listed = try bridgeService.listDevices().filter { $0.transportState == "device" }
             devices = listed
 
             if let selectedDevice, !listed.contains(selectedDevice) {
@@ -272,7 +274,7 @@ final class AppViewModel: ObservableObject {
                 try loadDirectory(path: currentPath)
             } else {
                 files = []
-                statusMessage = "没有可用设备（\(adbInfo)）。请连接手机并开启 USB 调试。"
+                statusMessage = "没有可用设备（\(bridgeInfo)）。请连接手机并开启 USB 调试。"
             }
         } catch {
             errorMessage = error.localizedDescription
@@ -290,7 +292,7 @@ final class AppViewModel: ObservableObject {
         defer { isBusy = false }
 
         do {
-            files = try adb.listDirectory(deviceSerial: selectedDevice.id, path: path)
+            files = try bridgeService.listDirectory(deviceSerial: selectedDevice.id, path: path)
             currentPath = path
             statusMessage = "已加载 \(files.count) 项"
             errorMessage = nil
@@ -312,7 +314,7 @@ final class AppViewModel: ObservableObject {
         }
     }
 
-    func download(_ item: AndroidFileItem) {
+    func download(_ item: DroidFileItem) {
         guard !item.isDirectory else { return }
         guard let selectedDevice else { return }
 
@@ -329,7 +331,7 @@ final class AppViewModel: ObservableObject {
         isBusy = true
         Task {
             do {
-                try adb.pullFile(deviceSerial: selectedDevice.id, remotePath: item.fullPath, localDirectory: targetDir)
+                try bridgeService.pullFile(deviceSerial: selectedDevice.id, remotePath: item.fullPath, localDirectory: targetDir)
                 statusMessage = "已下载：\(item.name)"
                 errorMessage = nil
             } catch {

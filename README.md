@@ -1,11 +1,11 @@
-# AndroidBridgeApp (macOS)
+# DroidFinder (macOS)
 
 An Android file access tool that runs on macOS (USB + ADB). Browse your phone's directories and download files to your Mac.
 
 ## Open and Build with Xcode
 
-1. Open the project: `AndroidBridgeApp.xcodeproj`
-2. At the top of Xcode, select the scheme: `AndroidBridgeApp`
+1. Open the project: `DroidFinder.xcodeproj`
+2. At the top of Xcode, select the scheme: `DroidFinder`
 3. Select the target platform: `My Mac`
 4. Run or build:
    - Run: `Cmd + R`
@@ -21,8 +21,8 @@ Run from the project root:
 
 Output paths:
 
-- `.app`: `build/DerivedData/Build/Products/Release/AndroidBridgeApp.app`
-- `.dmg`: `build/AndroidBridgeApp.dmg`
+- `.app`: `build/DerivedData/Build/Products/Release/DroidFinder.app`
+- `.dmg`: `build/DroidFinder.dmg`
 
 ## Archive and Export in Xcode
 

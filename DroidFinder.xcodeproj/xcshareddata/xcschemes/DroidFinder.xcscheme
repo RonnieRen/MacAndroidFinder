@@ -16,9 +16,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "B00100050000000000000001"
-               BuildableName = "AndroidBridgeApp.app"
-               BlueprintName = "AndroidBridgeApp"
-               ReferencedContainer = "container:AndroidBridgeApp.xcodeproj">
+               BuildableName = "DroidFinder.app"
+               BlueprintName = "DroidFinder"
+               ReferencedContainer = "container:DroidFinder.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -46,9 +46,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "B00100050000000000000001"
-            BuildableName = "AndroidBridgeApp.app"
-            BlueprintName = "AndroidBridgeApp"
-            ReferencedContainer = "container:AndroidBridgeApp.xcodeproj">
+            BuildableName = "DroidFinder.app"
+            BlueprintName = "DroidFinder"
+            ReferencedContainer = "container:DroidFinder.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>
@@ -63,9 +63,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "B00100050000000000000001"
-            BuildableName = "AndroidBridgeApp.app"
-            BlueprintName = "AndroidBridgeApp"
-            ReferencedContainer = "container:AndroidBridgeApp.xcodeproj">
+            BuildableName = "DroidFinder.app"
+            BlueprintName = "DroidFinder"
+            ReferencedContainer = "container:DroidFinder.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>

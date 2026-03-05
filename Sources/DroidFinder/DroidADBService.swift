@@ -1,6 +1,6 @@
 import Foundation
 
-struct AndroidDevice: Identifiable, Hashable {
+struct DroidDevice: Identifiable, Hashable {
     let id: String
     let model: String
     let transportState: String
@@ -10,7 +10,7 @@ struct AndroidDevice: Identifiable, Hashable {
     }
 }
 
-struct AndroidFileItem: Identifiable, Hashable {
+struct DroidFileItem: Identifiable, Hashable {
     enum ItemType {
         case file
         case directory
@@ -29,7 +29,7 @@ struct AndroidFileItem: Identifiable, Hashable {
     }
 }
 
-enum ADBError: LocalizedError {
+enum DroidBridgeError: LocalizedError {
     case adbNotFound
     case commandFailed(String)
     case parseFailed
@@ -46,22 +46,22 @@ enum ADBError: LocalizedError {
     }
 }
 
-final class ADBService {
-    private(set) lazy var adbPath: String? = {
-        for path in candidateADBPaths() where FileManager.default.isExecutableFile(atPath: path) {
+final class DroidADBService {
+    private(set) lazy var bridgeToolPath: String? = {
+        for path in candidateBridgePaths() where FileManager.default.isExecutableFile(atPath: path) {
             return path
         }
         return nil
     }()
 
-    func checkADBReady() throws {
-        guard adbPath != nil else {
-            throw ADBError.adbNotFound
+    func checkBridgeReady() throws {
+        guard bridgeToolPath != nil else {
+            throw DroidBridgeError.adbNotFound
         }
     }
 
-    func listDevices() throws -> [AndroidDevice] {
-        let output = try runADB(args: ["devices", "-l"])
+    func listDevices() throws -> [DroidDevice] {
+        let output = try runBridge(args: ["devices", "-l"])
         let lines = output
             .components(separatedBy: .newlines)
             .dropFirst()
@@ -80,19 +80,19 @@ final class ADBService {
                 model = String(modelPart.replacingOccurrences(of: "model:", with: "")).replacingOccurrences(of: "_", with: " ")
             }
 
-            return AndroidDevice(id: serial, model: model, transportState: state)
+            return DroidDevice(id: serial, model: model, transportState: state)
         }
     }
 
-    func listDirectory(deviceSerial: String, path: String) throws -> [AndroidFileItem] {
+    func listDirectory(deviceSerial: String, path: String) throws -> [DroidFileItem] {
         let cleanPath = path.isEmpty ? "/" : path
-        let output = try runADB(args: ["-s", deviceSerial, "shell", "ls", "-l", "-p", cleanPath])
+        let output = try runBridge(args: ["-s", deviceSerial, "shell", "ls", "-l", "-p", cleanPath])
         let lines = output
             .components(separatedBy: .newlines)
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty && !$0.hasPrefix("total") }
 
-        var items: [AndroidFileItem] = []
+        var items: [DroidFileItem] = []
 
         for line in lines {
             guard let firstChar = line.first else { continue }
@@ -102,7 +102,7 @@ final class ADBService {
             let name = String(components.suffix(from: 7).joined(separator: " "))
             if name.isEmpty { continue }
 
-            let itemType: AndroidFileItem.ItemType
+            let itemType: DroidFileItem.ItemType
             switch firstChar {
             case "d": itemType = .directory
             case "-": itemType = .file
@@ -122,7 +122,7 @@ final class ADBService {
 
             let size = String(components[4])
 
-            items.append(AndroidFileItem(
+            items.append(DroidFileItem(
                 id: fullPath,
                 name: normalizedName,
                 fullPath: fullPath,
@@ -132,7 +132,7 @@ final class ADBService {
         }
 
         if items.isEmpty && !lines.isEmpty {
-            throw ADBError.parseFailed
+            throw DroidBridgeError.parseFailed
         }
 
         return items.sorted { lhs, rhs in
@@ -144,34 +144,38 @@ final class ADBService {
     }
 
     func pullFile(deviceSerial: String, remotePath: String, localDirectory: URL) throws {
-        let result = try runADBWithStatus(args: ["-s", deviceSerial, "pull", remotePath, localDirectory.path])
+        let result = try runBridgeWithStatus(args: ["-s", deviceSerial, "pull", remotePath, localDirectory.path])
         guard result.status == 0 else {
-            throw ADBError.commandFailed(result.stderr.isEmpty ? "文件下载失败。" : result.stderr)
+            throw DroidBridgeError.commandFailed(result.stderr.isEmpty ? "文件下载失败。" : result.stderr)
         }
     }
 
     func pushFile(deviceSerial: String, localFile: URL, remoteDirectory: String) throws {
-        let result = try runADBWithStatus(args: ["-s", deviceSerial, "push", localFile.path, remoteDirectory])
+        let result = try runBridgeWithStatus(args: ["-s", deviceSerial, "push", localFile.path, remoteDirectory])
         guard result.status == 0 else {
-            throw ADBError.commandFailed(result.stderr.isEmpty ? "文件上传失败。" : result.stderr)
+            throw DroidBridgeError.commandFailed(result.stderr.isEmpty ? "文件上传失败。" : result.stderr)
         }
+
+        // Ask Android media indexers to scan the new file so Gallery-like apps can see it quickly.
+        let remoteFilePath = joinedRemotePath(directory: remoteDirectory, fileName: localFile.lastPathComponent)
+        refreshMediaIndex(deviceSerial: deviceSerial, remoteFilePath: remoteFilePath)
     }
 
-    private func runADB(args: [String]) throws -> String {
-        let result = try runADBWithStatus(args: args)
+    private func runBridge(args: [String]) throws -> String {
+        let result = try runBridgeWithStatus(args: args)
         guard result.status == 0 else {
-            throw ADBError.commandFailed(result.stderr.isEmpty ? "adb 执行失败。" : result.stderr)
+            throw DroidBridgeError.commandFailed(result.stderr.isEmpty ? "adb 执行失败。" : result.stderr)
         }
         return result.stdout
     }
 
-    private func runADBWithStatus(args: [String]) throws -> (status: Int32, stdout: String, stderr: String) {
-        guard let adbPath else {
-            throw ADBError.adbNotFound
+    private func runBridgeWithStatus(args: [String]) throws -> (status: Int32, stdout: String, stderr: String) {
+        guard let bridgeToolPath else {
+            throw DroidBridgeError.adbNotFound
         }
 
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: adbPath)
+        process.executableURL = URL(fileURLWithPath: bridgeToolPath)
         process.arguments = args
 
         let stdoutPipe = Pipe()
@@ -206,7 +210,7 @@ final class ADBService {
         return String(data: data, encoding: .utf8) ?? ""
     }
 
-    private func candidateADBPaths() -> [String] {
+    private func candidateBridgePaths() -> [String] {
         var candidates: [String] = []
         let env = ProcessInfo.processInfo.environment
 
@@ -238,6 +242,24 @@ final class ADBService {
         }
         return deduped
     }
+
+    private func joinedRemotePath(directory: String, fileName: String) -> String {
+        let normalizedDirectory = directory.hasSuffix("/") ? String(directory.dropLast()) : directory
+        return "\(normalizedDirectory)/\(fileName)"
+    }
+
+    private func refreshMediaIndex(deviceSerial: String, remoteFilePath: String) {
+        let cmdResult = try? runBridgeWithStatus(args: ["-s", deviceSerial, "shell", "cmd", "media", "rescan", remoteFilePath])
+        if cmdResult?.status == 0 {
+            return
+        }
+
+        _ = try? runBridgeWithStatus(args: [
+            "-s", deviceSerial, "shell", "am", "broadcast",
+            "-a", "android.intent.action.MEDIA_SCANNER_SCAN_FILE",
+            "-d", "file://\(remoteFilePath)"
+        ])
+    }
 }
 
-extension ADBService: @unchecked Sendable {}
+extension DroidADBService: @unchecked Sendable {}

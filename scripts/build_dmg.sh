@@ -2,14 +2,14 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-PROJECT_PATH="$ROOT_DIR/AndroidBridgeApp.xcodeproj"
-SCHEME="AndroidBridgeApp"
+PROJECT_PATH="$ROOT_DIR/DroidFinder.xcodeproj"
+SCHEME="DroidFinder"
 CONFIG="Release"
 BUILD_ROOT="$ROOT_DIR/build"
 DERIVED_DATA="$BUILD_ROOT/DerivedData"
 SYMROOT="$BUILD_ROOT/Products"
 OBJROOT="$BUILD_ROOT/Intermediates.noindex"
-APP_NAME="AndroidBridgeApp"
+APP_NAME="DroidFinder"
 APP_PATH="$SYMROOT/$CONFIG/$APP_NAME.app"
 DMG_STAGING="$BUILD_ROOT/dmg_staging"
 DMG_PATH="$BUILD_ROOT/$APP_NAME.dmg"

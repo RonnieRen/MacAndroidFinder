@@ -1,8 +1,8 @@
 import SwiftUI
 
 @main
-struct AndroidBridgeApp: App {
-    @StateObject private var viewModel = AppViewModel()
+struct DroidFinderApp: App {
+    @StateObject private var viewModel = DroidFinderViewModel()
 
     var body: some Scene {
         WindowGroup {

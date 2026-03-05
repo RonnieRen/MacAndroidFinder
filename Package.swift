@@ -2,19 +2,19 @@
 import PackageDescription
 
 let package = Package(
-    name: "AndroidBridgeApp",
+    name: "DroidFinder",
     platforms: [
         .macOS(.v13)
     ],
     products: [
         .executable(
-            name: "AndroidBridgeApp",
-            targets: ["AndroidBridgeApp"]
+            name: "DroidFinder",
+            targets: ["DroidFinder"]
         )
     ],
     targets: [
         .executableTarget(
-            name: "AndroidBridgeApp"
+            name: "DroidFinder"
         )
     ]
 )
