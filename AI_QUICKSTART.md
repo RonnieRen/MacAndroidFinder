@@ -8,7 +8,11 @@ Core goals:
 - Browse remote directories
 - Download files/folders from Android to Mac (`adb pull`)
 - Upload files/folders from Mac to Android (file picker + drag and drop, `adb push`)
+- Delete selected file or folder (recursive for folders)
+- Interactive edit mode for multi-select delete (with confirmation)
 - Auto-refresh device list in background
+- Multi-language UI support (English default, Simplified Chinese auto-switch when system language is Chinese)
+- Interactive Wi-Fi connection wizard (USB quick connect + nearby discovery + pairing + manual fallback)
 
 ## Project Layout
 - `DroidFinder/`:
@@ -38,6 +42,17 @@ Note: `DroidFinder/` and `Sources/DroidFinder/` are currently duplicated and in 
     - Fallback (if parsing fails or output format differs): `adb shell ls -1 -a -p -F <path>`
   - Upload post-action:
     - Triggers media rescan (`cmd media rescan` then broadcast fallback)
+  - Delete:
+    - `deletePath(deviceSerial:remotePath:)` using safe `rm -rf -- <path>`
+    - Blocks deleting `/`
+  - Localization helper:
+    - Contains `L10n` helper used by UI/view-model/service for bilingual text
+    - Language selection rule: default English, switch to Simplified Chinese when preferred language starts with `zh`
+  - Wireless ADB utilities:
+    - `listWirelessServices()` via `adb mdns services`
+    - `pair(endpoint:code:)` via `adb pair`
+    - `connect(endpoint:)` / `disconnect(endpoint:)` via `adb connect` / `adb disconnect`
+    - `quickConnectFromUSB(deviceSerial:)` (`adb tcpip 5555` + auto IP detect + connect)
 
 - `DroidFinderViewModel.swift`
   - App-level state:
@@ -71,6 +86,16 @@ Note: `DroidFinder/` and `Sources/DroidFinder/` are currently duplicated and in 
     - Split view (left: directory tree, right: file list)
     - Drag-and-drop upload zone on file list
     - Floating upload queue panel with progress
+    - Wireless connection sheet:
+      - USB quick connect
+      - Nearby device discovery/connection
+      - Pair-with-code form
+      - Manual endpoint connect/disconnect
+    - Delete actions:
+      - Top bar delete action for selected item
+      - File-list context-menu delete
+      - Destructive confirmation alert before delete
+      - Edit mode with checkbox multi-selection + batch delete confirm
 
 ## Functional Behavior
 - Device refresh:

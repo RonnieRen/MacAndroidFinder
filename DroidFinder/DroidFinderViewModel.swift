@@ -9,10 +9,19 @@ struct RemoteDirectoryNode: Identifiable, Hashable {
 }
 
 enum UploadTaskStatus: String {
-    case pending = "等待中"
-    case uploading = "上传中"
-    case completed = "已完成"
-    case failed = "失败"
+    case pending
+    case uploading
+    case completed
+    case failed
+
+    var title: String {
+        switch self {
+        case .pending: return L10n.waiting()
+        case .uploading: return L10n.uploading()
+        case .completed: return L10n.completed()
+        case .failed: return L10n.failed()
+        }
+    }
 }
 
 struct UploadTaskItem: Identifiable {
@@ -52,8 +61,8 @@ final class DirectoryTreeStore: ObservableObject {
 
         directoryTreeRoots = [
             RemoteDirectoryNode(path: "/", name: "/"),
-            RemoteDirectoryNode(path: "/sdcard", name: "Phone"),
-            RemoteDirectoryNode(path: "/sdcard/DCIM/Camera", name: "Camera")
+            RemoteDirectoryNode(path: "/sdcard", name: L10n.phoneRoot()),
+            RemoteDirectoryNode(path: "/sdcard/DCIM/Camera", name: L10n.cameraRoot())
         ]
 
         for root in directoryTreeRoots {
@@ -167,13 +176,13 @@ final class UploadQueueStore: ObservableObject {
             do {
                 try await pushFileAsync(deviceSerial: deviceSerial, localURL: task.localURL, remoteDirectory: task.remoteDirectory)
                 uploadQueue[idx].status = .completed
-                uploadQueue[idx].detail = "上传完成"
+                uploadQueue[idx].detail = L10n.uploadDone()
                 touchedDirectories.insert(task.remoteDirectory)
-                onStatus?("已上传：\(task.fileName)", nil)
+                onStatus?(L10n.uploaded(file: task.fileName), nil)
             } catch {
                 uploadQueue[idx].status = .failed
                 uploadQueue[idx].detail = error.localizedDescription
-                onStatus?("上传失败：\(task.fileName)", error.localizedDescription)
+                onStatus?(L10n.uploadFailed(file: task.fileName), error.localizedDescription)
             }
 
             recalcProgress()
@@ -217,9 +226,11 @@ final class DroidFinderViewModel: ObservableObject {
     @Published var selectedDevice: DroidDevice?
     @Published var currentPath: String = "/sdcard"
     @Published var files: [DroidFileItem] = []
-    @Published var statusMessage: String = "准备就绪"
+    @Published var wirelessServices: [WirelessService] = []
+    @Published var statusMessage: String = L10n.ready()
     @Published var errorMessage: String?
     @Published var isBusy = false
+    @Published var isWirelessBusy = false
 
     let directoryTreeStore: DirectoryTreeStore
     let uploadQueueStore: UploadQueueStore
@@ -265,7 +276,7 @@ final class DroidFinderViewModel: ObservableObject {
         do {
             let previousSelectedDeviceID = selectedDevice?.id
             try bridgeService.checkBridgeReady()
-            let bridgeInfo = bridgeService.bridgeToolPath.map { "adb: \($0)" } ?? "adb: 未找到"
+            let bridgeInfo = L10n.adbPath(bridgeService.bridgeToolPath)
             let listed = try bridgeService.listDevices().filter { $0.transportState == "device" }
             devices = listed
 
@@ -288,11 +299,11 @@ final class DroidFinderViewModel: ObservableObject {
                 }
             } else {
                 files = []
-                statusMessage = "没有可用设备（\(bridgeInfo)）。请连接手机并开启 USB 调试。"
+                statusMessage = L10n.noDevice(bridgeInfo)
             }
         } catch {
             errorMessage = error.localizedDescription
-            statusMessage = "无法读取设备。"
+            statusMessage = L10n.unableToReadDevice()
         }
     }
 
@@ -314,12 +325,17 @@ final class DroidFinderViewModel: ObservableObject {
         do {
             files = try bridgeService.listDirectory(deviceSerial: selectedDevice.id, path: path)
             currentPath = path
-            statusMessage = "已加载 \(files.count) 项"
+            statusMessage = L10n.loadedItems(files.count)
             errorMessage = nil
             directoryTreeStore.ensureLoaded(path: path)
         } catch {
+            if isPermissionDeniedError(error) {
+                // Keep current view unchanged and avoid modal error alerts.
+                errorMessage = nil
+                return
+            }
             errorMessage = error.localizedDescription
-            statusMessage = "目录读取失败"
+            statusMessage = L10n.directoryReadFailed()
             throw error
         }
     }
@@ -341,7 +357,7 @@ final class DroidFinderViewModel: ObservableObject {
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
-        panel.prompt = "选择下载目录"
+        panel.prompt = L10n.chooseDownloadDirectory()
 
         guard panel.runModal() == .OK, let targetDir = panel.url else {
             return
@@ -351,11 +367,11 @@ final class DroidFinderViewModel: ObservableObject {
         Task {
             do {
                 try bridgeService.pullFile(deviceSerial: selectedDevice.id, remotePath: item.fullPath, localDirectory: targetDir)
-                statusMessage = item.isDirectory ? "已下载目录：\(item.name)" : "已下载：\(item.name)"
+                statusMessage = item.isDirectory ? L10n.downloadedDirectory(item.name) : L10n.downloadedFile(item.name)
                 errorMessage = nil
             } catch {
                 errorMessage = error.localizedDescription
-                statusMessage = item.isDirectory ? "目录下载失败" : "下载失败"
+                statusMessage = item.isDirectory ? L10n.downloadDirectoryFailed() : L10n.downloadFailed()
             }
             isBusy = false
         }
@@ -366,7 +382,7 @@ final class DroidFinderViewModel: ObservableObject {
         panel.canChooseDirectories = true
         panel.canChooseFiles = true
         panel.allowsMultipleSelection = true
-        panel.prompt = "上传到 \(remoteDirectory)"
+        panel.prompt = L10n.uploadTo(remoteDirectory)
 
         guard panel.runModal() == .OK else { return }
         uploadLocalFiles(panel.urls, to: remoteDirectory)
@@ -374,6 +390,162 @@ final class DroidFinderViewModel: ObservableObject {
 
     func uploadLocalFiles(_ urls: [URL], to remoteDirectory: String) {
         uploadQueueStore.enqueue(urls: urls, remoteDirectory: remoteDirectory, deviceSerial: selectedDevice?.id)
+    }
+
+    func delete(_ item: DroidFileItem) {
+        guard let selectedDevice else { return }
+
+        isBusy = true
+        Task {
+            do {
+                try bridgeService.deletePath(deviceSerial: selectedDevice.id, remotePath: item.fullPath)
+                statusMessage = item.isDirectory ? L10n.deletedFolder(item.name) : L10n.deletedFile(item.name)
+                errorMessage = nil
+
+                let parentPath = URL(fileURLWithPath: item.fullPath).deletingLastPathComponent().path
+                directoryTreeStore.ensureLoaded(path: parentPath.isEmpty ? "/" : parentPath, forceRefresh: true)
+                try? loadDirectory(path: currentPath, showBusy: false)
+            } catch {
+                errorMessage = error.localizedDescription
+                statusMessage = L10n.deleteFailed()
+            }
+            isBusy = false
+        }
+    }
+
+    func delete(items: [DroidFileItem]) {
+        guard let selectedDevice else { return }
+        guard !items.isEmpty else { return }
+
+        isBusy = true
+        Task {
+            var deletedCount = 0
+            var lastError: Error?
+
+            for item in items {
+                do {
+                    try bridgeService.deletePath(deviceSerial: selectedDevice.id, remotePath: item.fullPath)
+                    deletedCount += 1
+                } catch {
+                    lastError = error
+                }
+            }
+
+            if deletedCount > 0 {
+                statusMessage = L10n.deletedItemsCount(deletedCount)
+                errorMessage = nil
+                directoryTreeStore.ensureLoaded(path: currentPath, forceRefresh: true)
+                try? loadDirectory(path: currentPath, showBusy: false)
+            }
+
+            if let lastError {
+                errorMessage = lastError.localizedDescription
+                if deletedCount == 0 {
+                    statusMessage = L10n.deleteFailed()
+                }
+            }
+
+            isBusy = false
+        }
+    }
+
+    func discoverWirelessServices() async {
+        isWirelessBusy = true
+        statusMessage = L10n.discoveringWireless()
+        defer { isWirelessBusy = false }
+
+        do {
+            wirelessServices = try bridgeService.listWirelessServices()
+            statusMessage = L10n.discoveredWirelessCount(wirelessServices.count)
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func quickConnectSelectedDeviceViaWiFi() async {
+        guard let selectedDevice, !selectedDevice.id.contains(":") else {
+            errorMessage = L10n.noUSBDeviceSelected()
+            return
+        }
+
+        isWirelessBusy = true
+        defer { isWirelessBusy = false }
+
+        do {
+            let endpoint = try bridgeService.quickConnectFromUSB(deviceSerial: selectedDevice.id)
+            statusMessage = L10n.connectedEndpoint(endpoint)
+            errorMessage = nil
+            await refreshDevices(showBusy: false, reloadCurrentDirectory: true)
+            await discoverWirelessServices()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func connectWireless(endpoint: String) async {
+        let trimmed = endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.contains(":") else {
+            errorMessage = L10n.invalidEndpoint()
+            return
+        }
+
+        isWirelessBusy = true
+        defer { isWirelessBusy = false }
+
+        do {
+            try bridgeService.connect(endpoint: trimmed)
+            statusMessage = L10n.connectedEndpoint(trimmed)
+            errorMessage = nil
+            await refreshDevices(showBusy: false, reloadCurrentDirectory: true)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func pairAndConnect(pairEndpoint: String, pairCode: String, connectEndpoint: String) async {
+        let pairTarget = pairEndpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+        let code = pairCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        let connectTarget = connectEndpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard pairTarget.contains(":"), connectTarget.contains(":"), !code.isEmpty else {
+            errorMessage = L10n.invalidPairInput()
+            return
+        }
+
+        isWirelessBusy = true
+        defer { isWirelessBusy = false }
+
+        do {
+            try bridgeService.pair(endpoint: pairTarget, code: code)
+            statusMessage = L10n.pairedEndpoint(pairTarget)
+            try bridgeService.connect(endpoint: connectTarget)
+            statusMessage = L10n.connectedEndpoint(connectTarget)
+            errorMessage = nil
+            await refreshDevices(showBusy: false, reloadCurrentDirectory: true)
+            await discoverWirelessServices()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func disconnectWireless(endpoint: String?) async {
+        isWirelessBusy = true
+        defer { isWirelessBusy = false }
+
+        do {
+            let trimmed = endpoint?.trimmingCharacters(in: .whitespacesAndNewlines)
+            try bridgeService.disconnect(endpoint: trimmed)
+            if let trimmed, !trimmed.isEmpty {
+                statusMessage = L10n.disconnectedEndpoint(trimmed)
+            } else {
+                statusMessage = L10n.disconnectedAll()
+            }
+            errorMessage = nil
+            await refreshDevices(showBusy: false, reloadCurrentDirectory: false)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     private func startDeviceAutoRefresh() {
@@ -385,5 +557,15 @@ final class DroidFinderViewModel: ObservableObject {
                 await self.refreshDevices(showBusy: false, reloadCurrentDirectory: false)
             }
         }
+    }
+
+    private func isPermissionDeniedError(_ error: Error) -> Bool {
+        guard case let DroidBridgeError.commandFailed(message) = error else {
+            return false
+        }
+        let lower = message.lowercased()
+        return lower.contains("permission denied")
+            || lower.contains("operation not permitted")
+            || lower.contains("access denied")
     }
 }

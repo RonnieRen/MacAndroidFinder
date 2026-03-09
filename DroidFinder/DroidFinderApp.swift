@@ -1,7 +1,42 @@
 import SwiftUI
+import AppKit
+
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        assignSelfAsDelegateToAllWindows()
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(windowDidBecomeMainNotification(_:)),
+            name: NSWindow.didBecomeMainNotification,
+            object: nil
+        )
+    }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        false
+    }
+
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        sender.miniaturize(nil)
+        return false
+    }
+
+    @objc
+    private func windowDidBecomeMainNotification(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow else { return }
+        window.delegate = self
+    }
+
+    private func assignSelfAsDelegateToAllWindows() {
+        for window in NSApp.windows {
+            window.delegate = self
+        }
+    }
+}
 
 @main
 struct DroidFinderApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var viewModel = DroidFinderViewModel()
 
     var body: some Scene {
