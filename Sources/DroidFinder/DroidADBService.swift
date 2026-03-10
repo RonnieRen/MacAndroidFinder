@@ -403,9 +403,7 @@ final class DroidADBService {
             throw DroidBridgeError.commandFailed(L10n.deleteRootNotAllowed())
         }
 
-        let escaped = shellSingleQuoted(cleanPath)
-        let command = "rm -rf -- \(escaped)"
-        let result = try runBridgeWithStatus(args: ["-s", deviceSerial, "shell", "sh", "-c", command])
+        let result = try runBridgeWithStatus(args: ["-s", deviceSerial, "shell", "rm", "-rf", "--", cleanPath])
         guard result.status == 0 else {
             throw DroidBridgeError.commandFailed(result.stderr.isEmpty ? L10n.deleteFailed() : result.stderr)
         }
@@ -559,10 +557,6 @@ final class DroidADBService {
             return nil
         }
         return String(text[matchedRange])
-    }
-
-    private func shellSingleQuoted(_ text: String) -> String {
-        "'\(text.replacingOccurrences(of: "'", with: "'\\''"))'"
     }
 
     private func filteredVisibleItems(_ items: [DroidFileItem]) -> [DroidFileItem] {
