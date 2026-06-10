@@ -8,20 +8,86 @@
 
 /* Begin PBXBuildFile section */
 		B00100010000000000000001 /* DroidFinderApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00100020000000000000001 /* DroidFinderApp.swift */; };
-		B00100010000000000000002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00100020000000000000002 /* ContentView.swift */; };
-		B00100010000000000000003 /* DroidFinderViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00100020000000000000003 /* DroidFinderViewModel.swift */; };
-		B00100010000000000000004 /* DroidADBService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00100020000000000000004 /* DroidADBService.swift */; };
+		B00100010000000000000006 /* ImagePreviewService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00100020000000000000008 /* ImagePreviewService.swift */; };
 		B00100010000000000000005 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B00100020000000000000007 /* Assets.xcassets */; };
+		0000000000000000C0000002 /* L10n.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000C0000001 /* L10n.swift */; };
+		0000000000000000C0000005 /* AppLanguage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000C0000004 /* AppLanguage.swift */; };
+		0000000000000000C0000007 /* DroidBridgeError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000C0000006 /* DroidBridgeError.swift */; };
+		0000000000000000C0000009 /* DroidDevice.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000C0000008 /* DroidDevice.swift */; };
+		0000000000000000C000000B /* DroidFileItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000C000000A /* DroidFileItem.swift */; };
+		0000000000000000C000000D /* RemoteDirectoryNode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000C000000C /* RemoteDirectoryNode.swift */; };
+		0000000000000000C000000F /* UploadTaskItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000C000000E /* UploadTaskItem.swift */; };
+		0000000000000000C0000011 /* WirelessService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000C0000010 /* WirelessService.swift */; };
+		0000000000000000C0000014 /* DroidADBService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000C0000013 /* DroidADBService.swift */; };
+		0000000000000000C0000016 /* FileExportPromiseDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000C0000015 /* FileExportPromiseDelegate.swift */; };
+		0000000000000000C0000019 /* DirectoryTreeStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000C0000018 /* DirectoryTreeStore.swift */; };
+		0000000000000000C000001B /* DroidFinderViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000C000001A /* DroidFinderViewModel.swift */; };
+		0000000000000000C000001D /* UploadQueueStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000C000001C /* UploadQueueStore.swift */; };
+		0000000000000000C0000020 /* AppFooterBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000C000001F /* AppFooterBarView.swift */; };
+		0000000000000000C0000022 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000C0000021 /* ContentView.swift */; };
+		0000000000000000C0000024 /* TopBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000C0000023 /* TopBarView.swift */; };
+		0000000000000000C0000027 /* ColumnDividerHandle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000C0000026 /* ColumnDividerHandle.swift */; };
+		0000000000000000C0000029 /* ColumnWidths.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000C0000028 /* ColumnWidths.swift */; };
+		0000000000000000C000002B /* FinderHoverTooltip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000C000002A /* FinderHoverTooltip.swift */; };
+		0000000000000000C000002D /* FinderTooltipWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000C000002C /* FinderTooltipWindow.swift */; };
+		0000000000000000C000002F /* HoverPointReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000C000002E /* HoverPointReader.swift */; };
+		0000000000000000C0000031 /* MultiItemDragOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000C0000030 /* MultiItemDragOverlay.swift */; };
+		0000000000000000C0000034 /* BreadcrumbBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000C0000033 /* BreadcrumbBarView.swift */; };
+		0000000000000000C0000036 /* DirectoryTreeNodeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000C0000035 /* DirectoryTreeNodeView.swift */; };
+		0000000000000000C0000038 /* ExplorerColumnHeaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000C0000037 /* ExplorerColumnHeaderView.swift */; };
+		0000000000000000C000003A /* ExplorerFileRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000C0000039 /* ExplorerFileRowView.swift */; };
+		0000000000000000C000003C /* ExplorerSplitView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000C000003B /* ExplorerSplitView.swift */; };
+		0000000000000000C000003F /* ImagePreviewPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000C000003E /* ImagePreviewPanelView.swift */; };
+		0000000000000000C0000042 /* UploadQueuePanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000C0000041 /* UploadQueuePanelView.swift */; };
+		0000000000000000C0000045 /* WirelessConnectionSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000C0000044 /* WirelessConnectionSheet.swift */; };
+		0000000000000000C0000049 /* DroidADBService+Wireless.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000C0000048 /* DroidADBService+Wireless.swift */; };
+		0000000000000000C000004B /* QRPairingController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000C000004A /* QRPairingController.swift */; };
+		0000000000000000C000004D /* QRPairingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000C000004C /* QRPairingView.swift */; };
+		0000000000000000C000004F /* DroidADBService+Transfer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000C000004E /* DroidADBService+Transfer.swift */; };
+		0000000000000000C0000051 /* DroidFinderViewModel+DragExport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000C0000050 /* DroidFinderViewModel+DragExport.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		B00100020000000000000001 /* DroidFinderApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DroidFinderApp.swift; sourceTree = "<group>"; };
-		B00100020000000000000002 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
-		B00100020000000000000003 /* DroidFinderViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DroidFinderViewModel.swift; sourceTree = "<group>"; };
-		B00100020000000000000004 /* DroidADBService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DroidADBService.swift; sourceTree = "<group>"; };
 		B00100020000000000000005 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		B00100020000000000000006 /* DroidFinder.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DroidFinder.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B00100020000000000000007 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		B00100020000000000000008 /* ImagePreviewService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImagePreviewService.swift; sourceTree = "<group>"; };
+		0000000000000000C0000001 /* L10n.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = L10n.swift; sourceTree = "<group>"; };
+		0000000000000000C0000004 /* AppLanguage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLanguage.swift; sourceTree = "<group>"; };
+		0000000000000000C0000006 /* DroidBridgeError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DroidBridgeError.swift; sourceTree = "<group>"; };
+		0000000000000000C0000008 /* DroidDevice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DroidDevice.swift; sourceTree = "<group>"; };
+		0000000000000000C000000A /* DroidFileItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DroidFileItem.swift; sourceTree = "<group>"; };
+		0000000000000000C000000C /* RemoteDirectoryNode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteDirectoryNode.swift; sourceTree = "<group>"; };
+		0000000000000000C000000E /* UploadTaskItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UploadTaskItem.swift; sourceTree = "<group>"; };
+		0000000000000000C0000010 /* WirelessService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WirelessService.swift; sourceTree = "<group>"; };
+		0000000000000000C0000013 /* DroidADBService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DroidADBService.swift; sourceTree = "<group>"; };
+		0000000000000000C0000048 /* DroidADBService+Wireless.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DroidADBService+Wireless.swift"; sourceTree = "<group>"; };
+		0000000000000000C000004E /* DroidADBService+Transfer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DroidADBService+Transfer.swift"; sourceTree = "<group>"; };
+		0000000000000000C0000050 /* DroidFinderViewModel+DragExport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DroidFinderViewModel+DragExport.swift"; sourceTree = "<group>"; };
+		0000000000000000C000004A /* QRPairingController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRPairingController.swift; sourceTree = "<group>"; };
+		0000000000000000C000004C /* QRPairingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRPairingView.swift; sourceTree = "<group>"; };
+		0000000000000000C0000015 /* FileExportPromiseDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileExportPromiseDelegate.swift; sourceTree = "<group>"; };
+		0000000000000000C0000018 /* DirectoryTreeStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectoryTreeStore.swift; sourceTree = "<group>"; };
+		0000000000000000C000001A /* DroidFinderViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DroidFinderViewModel.swift; sourceTree = "<group>"; };
+		0000000000000000C000001C /* UploadQueueStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UploadQueueStore.swift; sourceTree = "<group>"; };
+		0000000000000000C000001F /* AppFooterBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppFooterBarView.swift; sourceTree = "<group>"; };
+		0000000000000000C0000021 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		0000000000000000C0000023 /* TopBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TopBarView.swift; sourceTree = "<group>"; };
+		0000000000000000C0000026 /* ColumnDividerHandle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColumnDividerHandle.swift; sourceTree = "<group>"; };
+		0000000000000000C0000028 /* ColumnWidths.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColumnWidths.swift; sourceTree = "<group>"; };
+		0000000000000000C000002A /* FinderHoverTooltip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinderHoverTooltip.swift; sourceTree = "<group>"; };
+		0000000000000000C000002C /* FinderTooltipWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinderTooltipWindow.swift; sourceTree = "<group>"; };
+		0000000000000000C000002E /* HoverPointReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HoverPointReader.swift; sourceTree = "<group>"; };
+		0000000000000000C0000030 /* MultiItemDragOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultiItemDragOverlay.swift; sourceTree = "<group>"; };
+		0000000000000000C0000033 /* BreadcrumbBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BreadcrumbBarView.swift; sourceTree = "<group>"; };
+		0000000000000000C0000035 /* DirectoryTreeNodeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectoryTreeNodeView.swift; sourceTree = "<group>"; };
+		0000000000000000C0000037 /* ExplorerColumnHeaderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExplorerColumnHeaderView.swift; sourceTree = "<group>"; };
+		0000000000000000C0000039 /* ExplorerFileRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExplorerFileRowView.swift; sourceTree = "<group>"; };
+		0000000000000000C000003B /* ExplorerSplitView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExplorerSplitView.swift; sourceTree = "<group>"; };
+		0000000000000000C000003E /* ImagePreviewPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImagePreviewPanelView.swift; sourceTree = "<group>"; };
+		0000000000000000C0000041 /* UploadQueuePanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UploadQueuePanelView.swift; sourceTree = "<group>"; };
+		0000000000000000C0000044 /* WirelessConnectionSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WirelessConnectionSheet.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -47,9 +113,12 @@
 			isa = PBXGroup;
 			children = (
 				B00100020000000000000001 /* DroidFinderApp.swift */,
-				B00100020000000000000002 /* ContentView.swift */,
-				B00100020000000000000003 /* DroidFinderViewModel.swift */,
-				B00100020000000000000004 /* DroidADBService.swift */,
+				B00100020000000000000008 /* ImagePreviewService.swift */,
+				0000000000000000C0000003 /* Localization */,
+				0000000000000000C0000012 /* Models */,
+				0000000000000000C0000017 /* Services */,
+				0000000000000000C000001E /* ViewModels */,
+				0000000000000000C0000047 /* Views */,
 				B00100020000000000000007 /* Assets.xcassets */,
 				B00100020000000000000005 /* Info.plist */,
 			);
@@ -62,6 +131,124 @@
 				B00100020000000000000006 /* DroidFinder.app */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		0000000000000000C0000003 /* Localization */ = {
+			isa = PBXGroup;
+			children = (
+				0000000000000000C0000001 /* L10n.swift */,
+			);
+			path = Localization;
+			sourceTree = "<group>";
+		};
+		0000000000000000C0000012 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				0000000000000000C0000004 /* AppLanguage.swift */,
+				0000000000000000C0000006 /* DroidBridgeError.swift */,
+				0000000000000000C0000008 /* DroidDevice.swift */,
+				0000000000000000C000000A /* DroidFileItem.swift */,
+				0000000000000000C000000C /* RemoteDirectoryNode.swift */,
+				0000000000000000C000000E /* UploadTaskItem.swift */,
+				0000000000000000C0000010 /* WirelessService.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		0000000000000000C0000017 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				0000000000000000C0000013 /* DroidADBService.swift */,
+				0000000000000000C000004E /* DroidADBService+Transfer.swift */,
+				0000000000000000C0000048 /* DroidADBService+Wireless.swift */,
+				0000000000000000C0000015 /* FileExportPromiseDelegate.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		0000000000000000C000001E /* ViewModels */ = {
+			isa = PBXGroup;
+			children = (
+				0000000000000000C0000018 /* DirectoryTreeStore.swift */,
+				0000000000000000C000001A /* DroidFinderViewModel.swift */,
+				0000000000000000C0000050 /* DroidFinderViewModel+DragExport.swift */,
+				0000000000000000C000004A /* QRPairingController.swift */,
+				0000000000000000C000001C /* UploadQueueStore.swift */,
+			);
+			path = ViewModels;
+			sourceTree = "<group>";
+		};
+		0000000000000000C0000025 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				0000000000000000C000001F /* AppFooterBarView.swift */,
+				0000000000000000C0000021 /* ContentView.swift */,
+				0000000000000000C0000023 /* TopBarView.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		0000000000000000C0000032 /* Components */ = {
+			isa = PBXGroup;
+			children = (
+				0000000000000000C0000026 /* ColumnDividerHandle.swift */,
+				0000000000000000C0000028 /* ColumnWidths.swift */,
+				0000000000000000C000002A /* FinderHoverTooltip.swift */,
+				0000000000000000C000002C /* FinderTooltipWindow.swift */,
+				0000000000000000C000002E /* HoverPointReader.swift */,
+				0000000000000000C0000030 /* MultiItemDragOverlay.swift */,
+			);
+			path = Components;
+			sourceTree = "<group>";
+		};
+		0000000000000000C000003D /* Explorer */ = {
+			isa = PBXGroup;
+			children = (
+				0000000000000000C0000033 /* BreadcrumbBarView.swift */,
+				0000000000000000C0000035 /* DirectoryTreeNodeView.swift */,
+				0000000000000000C0000037 /* ExplorerColumnHeaderView.swift */,
+				0000000000000000C0000039 /* ExplorerFileRowView.swift */,
+				0000000000000000C000003B /* ExplorerSplitView.swift */,
+			);
+			path = Explorer;
+			sourceTree = "<group>";
+		};
+		0000000000000000C0000040 /* Preview */ = {
+			isa = PBXGroup;
+			children = (
+				0000000000000000C000003E /* ImagePreviewPanelView.swift */,
+			);
+			path = Preview;
+			sourceTree = "<group>";
+		};
+		0000000000000000C0000043 /* Upload */ = {
+			isa = PBXGroup;
+			children = (
+				0000000000000000C0000041 /* UploadQueuePanelView.swift */,
+			);
+			path = Upload;
+			sourceTree = "<group>";
+		};
+		0000000000000000C0000046 /* Wireless */ = {
+			isa = PBXGroup;
+			children = (
+				0000000000000000C000004C /* QRPairingView.swift */,
+				0000000000000000C0000044 /* WirelessConnectionSheet.swift */,
+			);
+			path = Wireless;
+			sourceTree = "<group>";
+		};
+		0000000000000000C0000047 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				0000000000000000C0000025 /* App */,
+				0000000000000000C0000032 /* Components */,
+				0000000000000000C000003D /* Explorer */,
+				0000000000000000C0000040 /* Preview */,
+				0000000000000000C0000043 /* Upload */,
+				0000000000000000C0000046 /* Wireless */,
+			);
+			path = Views;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -133,10 +320,43 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				B00100010000000000000001 /* DroidFinderApp.swift in Sources */,
-				B00100010000000000000002 /* ContentView.swift in Sources */,
-				B00100010000000000000003 /* DroidFinderViewModel.swift in Sources */,
-				B00100010000000000000004 /* DroidADBService.swift in Sources */,
+					B00100010000000000000001 /* DroidFinderApp.swift in Sources */,
+					B00100010000000000000006 /* ImagePreviewService.swift in Sources */,
+					0000000000000000C0000002 /* L10n.swift in Sources */,
+					0000000000000000C0000005 /* AppLanguage.swift in Sources */,
+					0000000000000000C0000007 /* DroidBridgeError.swift in Sources */,
+					0000000000000000C0000009 /* DroidDevice.swift in Sources */,
+					0000000000000000C000000B /* DroidFileItem.swift in Sources */,
+					0000000000000000C000000D /* RemoteDirectoryNode.swift in Sources */,
+					0000000000000000C000000F /* UploadTaskItem.swift in Sources */,
+					0000000000000000C0000011 /* WirelessService.swift in Sources */,
+					0000000000000000C0000014 /* DroidADBService.swift in Sources */,
+					0000000000000000C000004F /* DroidADBService+Transfer.swift in Sources */,
+					0000000000000000C0000049 /* DroidADBService+Wireless.swift in Sources */,
+					0000000000000000C0000016 /* FileExportPromiseDelegate.swift in Sources */,
+					0000000000000000C0000019 /* DirectoryTreeStore.swift in Sources */,
+					0000000000000000C000001B /* DroidFinderViewModel.swift in Sources */,
+					0000000000000000C0000051 /* DroidFinderViewModel+DragExport.swift in Sources */,
+					0000000000000000C000004B /* QRPairingController.swift in Sources */,
+					0000000000000000C000001D /* UploadQueueStore.swift in Sources */,
+					0000000000000000C0000020 /* AppFooterBarView.swift in Sources */,
+					0000000000000000C0000022 /* ContentView.swift in Sources */,
+					0000000000000000C0000024 /* TopBarView.swift in Sources */,
+					0000000000000000C0000027 /* ColumnDividerHandle.swift in Sources */,
+					0000000000000000C0000029 /* ColumnWidths.swift in Sources */,
+					0000000000000000C000002B /* FinderHoverTooltip.swift in Sources */,
+					0000000000000000C000002D /* FinderTooltipWindow.swift in Sources */,
+					0000000000000000C000002F /* HoverPointReader.swift in Sources */,
+					0000000000000000C0000031 /* MultiItemDragOverlay.swift in Sources */,
+					0000000000000000C0000034 /* BreadcrumbBarView.swift in Sources */,
+					0000000000000000C0000036 /* DirectoryTreeNodeView.swift in Sources */,
+					0000000000000000C0000038 /* ExplorerColumnHeaderView.swift in Sources */,
+					0000000000000000C000003A /* ExplorerFileRowView.swift in Sources */,
+					0000000000000000C000003C /* ExplorerSplitView.swift in Sources */,
+					0000000000000000C000003F /* ImagePreviewPanelView.swift in Sources */,
+					0000000000000000C0000042 /* UploadQueuePanelView.swift in Sources */,
+					0000000000000000C000004D /* QRPairingView.swift in Sources */,
+					0000000000000000C0000045 /* WirelessConnectionSheet.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -224,6 +444,7 @@
 				CODE_SIGN_STYLE = Manual;
 				CODE_SIGNING_ALLOWED = NO;
 				CODE_SIGNING_REQUIRED = NO;
+				CONFIGURATION_BUILD_DIR = "$(SRCROOT)/Products/$(CONFIGURATION)";
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = DroidFinder/Info.plist;

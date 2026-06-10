@@ -10,6 +10,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             name: NSWindow.didBecomeMainNotification,
             object: nil
         )
+        // Clean up any leftover temp files from a previous session
+        cleanupDroidFinderTempDir()
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        cleanupDroidFinderTempDir()
+    }
+
+    private func cleanupDroidFinderTempDir() {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("DroidFinder")
+        try? FileManager.default.removeItem(at: tempDir)
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

@@ -1,224 +1,12 @@
 import AppKit
 import Foundation
+import UniformTypeIdentifiers
 
-struct RemoteDirectoryNode: Identifiable, Hashable {
-    let path: String
-    let name: String
-
-    var id: String { path }
-}
-
-enum UploadTaskStatus: String {
-    case pending
-    case uploading
-    case completed
-    case failed
-
-    var title: String {
-        switch self {
-        case .pending: return L10n.waiting()
-        case .uploading: return L10n.uploading()
-        case .completed: return L10n.completed()
-        case .failed: return L10n.failed()
-        }
-    }
-}
-
-struct UploadTaskItem: Identifiable {
-    let id = UUID()
-    let localURL: URL
-    let remoteDirectory: String
-    var status: UploadTaskStatus
-    var detail: String?
-
-    var fileName: String {
-        localURL.lastPathComponent
-    }
-}
-
-@MainActor
-final class DirectoryTreeStore: ObservableObject {
-    @Published var directoryTreeRoots: [RemoteDirectoryNode] = []
-
-    private let bridgeService: DroidADBService
-    private var selectedDeviceSerial: String?
-    private var directoryChildrenCache: [String: [RemoteDirectoryNode]] = [:]
-    private var loadingDirectoryPaths: Set<String> = []
-
-    init(bridgeService: DroidADBService) {
-        self.bridgeService = bridgeService
-    }
-
-    func configureForDevice(serial: String?) {
-        selectedDeviceSerial = serial
-        directoryChildrenCache.removeAll()
-        loadingDirectoryPaths.removeAll()
-
-        guard serial != nil else {
-            directoryTreeRoots = []
-            return
-        }
-
-        directoryTreeRoots = [
-            RemoteDirectoryNode(path: "/", name: "/"),
-            RemoteDirectoryNode(path: "/sdcard", name: L10n.phoneRoot()),
-            RemoteDirectoryNode(path: "/sdcard/DCIM/Camera", name: L10n.cameraRoot())
-        ]
-
-        for root in directoryTreeRoots {
-            ensureLoaded(path: root.path)
-        }
-    }
-
-    func childrenForDirectory(path: String) -> [RemoteDirectoryNode] {
-        directoryChildrenCache[path] ?? []
-    }
-
-    func isDirectoryLoading(path: String) -> Bool {
-        loadingDirectoryPaths.contains(path)
-    }
-
-    func ensureLoaded(path: String, forceRefresh: Bool = false) {
-        guard selectedDeviceSerial != nil else { return }
-
-        if forceRefresh {
-            directoryChildrenCache.removeValue(forKey: path)
-        }
-        guard directoryChildrenCache[path] == nil else { return }
-        guard !loadingDirectoryPaths.contains(path) else { return }
-
-        loadingDirectoryPaths.insert(path)
-
-        Task {
-            defer { loadingDirectoryPaths.remove(path) }
-            do {
-                let children = try await loadSubdirectories(path: path)
-                directoryChildrenCache[path] = children
-            } catch {
-                directoryChildrenCache[path] = []
-            }
-        }
-    }
-
-    private func loadSubdirectories(path: String) async throws -> [RemoteDirectoryNode] {
-        guard let serial = selectedDeviceSerial else { return [] }
-        let items = try await withCheckedThrowingContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
-                do {
-                    let result = try self.bridgeService.listDirectory(deviceSerial: serial, path: path)
-                    continuation.resume(returning: result)
-                } catch {
-                    continuation.resume(throwing: error)
-                }
-            }
-        }
-
-        return items
-            .filter(\.isDirectory)
-            .map { item in
-                RemoteDirectoryNode(path: item.fullPath, name: item.name)
-            }
-            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-    }
-}
-
-@MainActor
-final class UploadQueueStore: ObservableObject {
-    @Published var uploadQueue: [UploadTaskItem] = []
-    @Published var uploadProgress: Double = 0
-    @Published var isUploading = false
-
-    var onStatus: ((String, String?) -> Void)?
-    var onBatchCompleted: ((Set<String>) -> Void)?
-
-    private let bridgeService: DroidADBService
-    private var workerTask: Task<Void, Never>?
-
-    init(bridgeService: DroidADBService) {
-        self.bridgeService = bridgeService
-    }
-
-    func enqueue(urls: [URL], remoteDirectory: String, deviceSerial: String?) {
-        guard !urls.isEmpty else { return }
-        guard deviceSerial != nil else { return }
-
-        let items = urls.map { url in
-            UploadTaskItem(localURL: url, remoteDirectory: remoteDirectory, status: .pending, detail: nil)
-        }
-        uploadQueue.append(contentsOf: items)
-        recalcProgress()
-        startWorkerIfNeeded(deviceSerial: deviceSerial)
-    }
-
-    func clearFinished() {
-        uploadQueue.removeAll { $0.status == .completed || $0.status == .failed }
-        recalcProgress()
-    }
-
-    private func startWorkerIfNeeded(deviceSerial: String?) {
-        guard workerTask == nil else { return }
-        guard let serial = deviceSerial else { return }
-
-        workerTask = Task { [weak self] in
-            await self?.processQueue(deviceSerial: serial)
-        }
-    }
-
-    private func processQueue(deviceSerial: String) async {
-        isUploading = true
-        var touchedDirectories: Set<String> = []
-
-        while let idx = uploadQueue.firstIndex(where: { $0.status == .pending }) {
-            uploadQueue[idx].status = .uploading
-            uploadQueue[idx].detail = nil
-
-            let task = uploadQueue[idx]
-            do {
-                try await pushFileAsync(deviceSerial: deviceSerial, localURL: task.localURL, remoteDirectory: task.remoteDirectory)
-                uploadQueue[idx].status = .completed
-                uploadQueue[idx].detail = L10n.uploadDone()
-                touchedDirectories.insert(task.remoteDirectory)
-                onStatus?(L10n.uploaded(file: task.fileName), nil)
-            } catch {
-                uploadQueue[idx].status = .failed
-                uploadQueue[idx].detail = error.localizedDescription
-                onStatus?(L10n.uploadFailed(file: task.fileName), error.localizedDescription)
-            }
-
-            recalcProgress()
-        }
-
-        isUploading = false
-        workerTask = nil
-        onBatchCompleted?(touchedDirectories)
-    }
-
-    private func pushFileAsync(deviceSerial: String, localURL: URL, remoteDirectory: String) async throws {
-        let uploadBridgeService = self.bridgeService
-        try await withCheckedThrowingContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
-                _ = localURL.startAccessingSecurityScopedResource()
-                defer { localURL.stopAccessingSecurityScopedResource() }
-
-                do {
-                    try uploadBridgeService.pushFile(deviceSerial: deviceSerial, localFile: localURL, remoteDirectory: remoteDirectory)
-                    continuation.resume(returning: ())
-                } catch {
-                    continuation.resume(throwing: error)
-                }
-            }
-        }
-    }
-
-    private func recalcProgress() {
-        guard !uploadQueue.isEmpty else {
-            uploadProgress = 0
-            return
-        }
-        let doneCount = uploadQueue.filter { $0.status == .completed || $0.status == .failed }.count
-        uploadProgress = Double(doneCount) / Double(uploadQueue.count)
-    }
-}
+// MARK: - DroidFinderViewModel
+//
+// The top-level view model. Coordinates device discovery, directory
+// navigation, file transfers and wireless ADB pairing. Most actions delegate
+// to either `DroidADBService`, `DirectoryTreeStore`, or `UploadQueueStore`.
 
 @MainActor
 final class DroidFinderViewModel: ObservableObject {
@@ -234,15 +22,32 @@ final class DroidFinderViewModel: ObservableObject {
 
     let directoryTreeStore: DirectoryTreeStore
     let uploadQueueStore: UploadQueueStore
+    let imagePreviewService: ImagePreviewService
 
-    private let bridgeService: DroidADBService
+    let bridgeService: DroidADBService
     private var deviceAutoRefreshTask: Task<Void, Never>?
+    private var deviceTrackerProcess: Process?
+
+    private(set) lazy var qrPairingController: QRPairingController = {
+        let controller = QRPairingController(bridgeService: bridgeService)
+        controller.onConnected = { [weak self] endpoint in
+            guard let self else { return }
+            self.statusMessage = L10n.connectedEndpoint(endpoint)
+            self.errorMessage = nil
+            Task {
+                await self.refreshDevices(showBusy: false, reloadCurrentDirectory: true)
+                await self.discoverWirelessServices()
+            }
+        }
+        return controller
+    }()
 
     init() {
         let service = DroidADBService()
         self.bridgeService = service
         self.directoryTreeStore = DirectoryTreeStore(bridgeService: service)
         self.uploadQueueStore = UploadQueueStore(bridgeService: service)
+        self.imagePreviewService = ImagePreviewService(bridge: service)
 
         uploadQueueStore.onStatus = { [weak self] message, error in
             self?.statusMessage = message
@@ -262,6 +67,8 @@ final class DroidFinderViewModel: ObservableObject {
         }
         startDeviceAutoRefresh()
     }
+
+    // MARK: - Device discovery
 
     func refreshDevices(showBusy: Bool = true, reloadCurrentDirectory: Bool = true) async {
         if showBusy {
@@ -307,6 +114,8 @@ final class DroidFinderViewModel: ObservableObject {
         }
     }
 
+    // MARK: - Directory navigation
+
     func loadDirectory(path: String, showBusy: Bool = true) throws {
         guard let selectedDevice else {
             files = []
@@ -350,6 +159,8 @@ final class DroidFinderViewModel: ObservableObject {
         }
     }
 
+    // MARK: - Download / upload
+
     func download(_ item: DroidFileItem) {
         guard let selectedDevice else { return }
 
@@ -364,16 +175,35 @@ final class DroidFinderViewModel: ObservableObject {
         }
 
         isBusy = true
-        Task {
+        let serial = selectedDevice.id
+        let br = bridgeService
+
+        // Pull on a background task — adb pull of a large file would block
+        // the main actor — and surface adb's live percentage in the footer.
+        Task.detached(priority: .userInitiated) { [weak self] in
             do {
-                try bridgeService.pullFile(deviceSerial: selectedDevice.id, remotePath: item.fullPath, localDirectory: targetDir)
-                statusMessage = item.isDirectory ? L10n.downloadedDirectory(item.name) : L10n.downloadedFile(item.name)
-                errorMessage = nil
+                try br.pullFile(
+                    deviceSerial: serial,
+                    remotePath: item.fullPath,
+                    localDirectory: targetDir,
+                    onPercent: { percent in
+                        Task { @MainActor [weak self] in
+                            self?.statusMessage = L10n.downloadingPercent(item.name, percent)
+                        }
+                    }
+                )
+                await MainActor.run { [weak self] in
+                    self?.statusMessage = item.isDirectory ? L10n.downloadedDirectory(item.name) : L10n.downloadedFile(item.name)
+                    self?.errorMessage = nil
+                    self?.isBusy = false
+                }
             } catch {
-                errorMessage = error.localizedDescription
-                statusMessage = item.isDirectory ? L10n.downloadDirectoryFailed() : L10n.downloadFailed()
+                await MainActor.run { [weak self] in
+                    self?.errorMessage = error.localizedDescription
+                    self?.statusMessage = item.isDirectory ? L10n.downloadDirectoryFailed() : L10n.downloadFailed()
+                    self?.isBusy = false
+                }
             }
-            isBusy = false
         }
     }
 
@@ -391,6 +221,8 @@ final class DroidFinderViewModel: ObservableObject {
     func uploadLocalFiles(_ urls: [URL], to remoteDirectory: String) {
         uploadQueueStore.enqueue(urls: urls, remoteDirectory: remoteDirectory, deviceSerial: selectedDevice?.id)
     }
+
+    // MARK: - Delete
 
     func delete(_ item: DroidFileItem) {
         guard let selectedDevice else { return }
@@ -448,6 +280,8 @@ final class DroidFinderViewModel: ObservableObject {
             isBusy = false
         }
     }
+
+    // MARK: - Wireless
 
     func discoverWirelessServices() async {
         isWirelessBusy = true
@@ -548,13 +382,75 @@ final class DroidFinderViewModel: ObservableObject {
         }
     }
 
+    // MARK: - Open in App (double-click)
+
+    /// Pull the remote file to a local temp dir and open it with the system-default app.
+    func openInApp(_ item: DroidFileItem) {
+        guard let selectedDevice else { return }
+        let serial = selectedDevice.id
+        let br = bridgeService
+
+        Task.detached(priority: .userInitiated) {
+            let tempDir = FileManager.default.temporaryDirectory
+                .appendingPathComponent("DroidFinder", isDirectory: true)
+            try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+            let dest = tempDir.appendingPathComponent(item.name)
+
+            do {
+                // Remove stale copy if present
+                try? FileManager.default.removeItem(at: dest)
+                try br.pullFileToURL(deviceSerial: serial, remotePath: item.fullPath, localURL: dest)
+                await MainActor.run {
+                    NSWorkspace.shared.open(dest)
+                    self.statusMessage = L10n.openedFile(item.name)
+                }
+            } catch {
+                await MainActor.run {
+                    self.errorMessage = error.localizedDescription
+                }
+            }
+        }
+    }
+
+    // MARK: - Temp file cleanup
+
+    func cleanupTempFiles() {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("DroidFinder")
+        try? FileManager.default.removeItem(at: tempDir)
+    }
+
+    // MARK: - Helpers
+
     private func startDeviceAutoRefresh() {
         deviceAutoRefreshTask?.cancel()
-        deviceAutoRefreshTask = Task { [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 3_000_000_000)
-                guard let self else { return }
-                await self.refreshDevices(showBusy: false, reloadCurrentDirectory: false)
+        deviceAutoRefreshTask = nil
+        deviceTrackerProcess?.terminationHandler = nil
+        deviceTrackerProcess?.terminate()
+
+        // Preferred: `adb track-devices` long-lived connection — the adb
+        // server pushes an update on every plug/unplug, no polling needed.
+        deviceTrackerProcess = bridgeService.startDeviceTracking { [weak self] in
+            Task { @MainActor [weak self] in
+                await self?.refreshDevices(showBusy: false, reloadCurrentDirectory: false)
+            }
+        }
+
+        if let tracker = deviceTrackerProcess {
+            // If the tracker dies (e.g. `adb kill-server`), restart after a beat.
+            tracker.terminationHandler = { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    try? await Task.sleep(nanoseconds: 2_000_000_000)
+                    self?.startDeviceAutoRefresh()
+                }
+            }
+        } else {
+            // adb missing or spawn failed — fall back to slow polling.
+            deviceAutoRefreshTask = Task { [weak self] in
+                while !Task.isCancelled {
+                    try? await Task.sleep(nanoseconds: 3_000_000_000)
+                    guard let self else { return }
+                    await self.refreshDevices(showBusy: false, reloadCurrentDirectory: false)
+                }
             }
         }
     }

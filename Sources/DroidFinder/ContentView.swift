@@ -129,6 +129,8 @@ struct ContentView: View {
                 selectedDevice: viewModel.selectedDevice,
                 onDeviceSelected: { device in
                     viewModel.selectedDevice = device
+                    selectedItemID = nil
+                    viewModel.imagePreviewService.reset()
                     if device != nil {
                         try? viewModel.loadDirectory(path: viewModel.currentPath)
                     }
@@ -180,8 +182,19 @@ struct ContentView: View {
                 },
                 onDownloadItem: { viewModel.download($0) },
                 onDeleteItem: { pendingDeleteItem = $0 },
-                onDropProviders: { providers in handleFileDrop(providers) }
+                onDropProviders: { providers in handleFileDrop(providers) },
+                previewService: viewModel.imagePreviewService,
+                previewItem: previewItem
             )
+            .onChange(of: selectedItemID) { newID in
+                if let id = newID,
+                   let item = viewModel.files.first(where: { $0.id == id }),
+                   let serial = viewModel.selectedDevice?.id {
+                    viewModel.imagePreviewService.request(item: item, deviceSerial: serial)
+                } else {
+                    viewModel.imagePreviewService.reset()
+                }
+            }
 
             AppFooterBarView(
                 isBusy: viewModel.isBusy || viewModel.uploadQueueStore.isUploading,
@@ -266,6 +279,11 @@ struct ContentView: View {
     private var selectedFile: DroidFileItem? {
         guard let selectedItemID else { return nil }
         return viewModel.files.first(where: { $0.id == selectedItemID })
+    }
+
+    private var previewItem: DroidFileItem? {
+        guard !isEditMode, let f = selectedFile, ImagePreviewService.isImage(f.name) else { return nil }
+        return f
     }
 
     private var breadcrumbs: [(name: String, path: String)] {
@@ -556,7 +574,9 @@ private struct ExplorerSplitView: View {
     let onDownloadItem: (DroidFileItem) -> Void
     let onDeleteItem: (DroidFileItem) -> Void
     let onDropProviders: ([NSItemProvider]) -> Bool
-    
+    let previewService: ImagePreviewService
+    let previewItem: DroidFileItem?
+
     var body: some View {
         HSplitView {
             List {
@@ -632,6 +652,12 @@ private struct ExplorerSplitView: View {
                 .onDrop(of: [UTType.fileURL.identifier], isTargeted: $isDropTargeted) { providers in
                     onDropProviders(providers)
                 }
+            }
+
+            // 图片预览第三栏：仅当选中图片文件时出现
+            if let item = previewItem {
+                ImagePreviewPanelView(service: previewService, item: item)
+                    .frame(minWidth: 200, idealWidth: 300)
             }
         }
     }
@@ -829,6 +855,51 @@ private struct ExplorerSplitView: View {
         }
     }
     
+    private struct ImagePreviewPanelView: View {
+        @ObservedObject var service: ImagePreviewService
+        let item: DroidFileItem
+
+        var body: some View {
+            VStack(spacing: 0) {
+                Text(item.name)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 6)
+
+                Divider()
+
+                if service.isLoading {
+                    Spacer()
+                    VStack(spacing: 8) {
+                        ProgressView()
+                        Text("Loading…")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                } else if let image = service.previewImage {
+                    Image(nsImage: image)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .padding(8)
+                } else if let error = service.previewError {
+                    Spacer()
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding()
+                    Spacer()
+                } else {
+                    Spacer()
+                }
+            }
+        }
+    }
+
     private struct DirectoryTreeNodeView: View {
         let node: RemoteDirectoryNode
         let level: Int
@@ -837,9 +908,28 @@ private struct ExplorerSplitView: View {
         let loadingProvider: (String) -> Bool
         let onSelect: (String) -> Void
         let onExpand: (String) -> Void
-        
-        @State private var isExpanded = false
-        
+
+        @State private var isExpanded: Bool
+
+        init(
+            node: RemoteDirectoryNode,
+            level: Int,
+            selectedPath: Binding<String?>,
+            childProvider: @escaping (String) -> [RemoteDirectoryNode],
+            loadingProvider: @escaping (String) -> Bool,
+            onSelect: @escaping (String) -> Void,
+            onExpand: @escaping (String) -> Void
+        ) {
+            self.node = node
+            self.level = level
+            _selectedPath = selectedPath
+            self.childProvider = childProvider
+            self.loadingProvider = loadingProvider
+            self.onSelect = onSelect
+            self.onExpand = onExpand
+            _isExpanded = State(initialValue: node.autoExpand)
+        }
+
         var body: some View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
@@ -891,6 +981,11 @@ private struct ExplorerSplitView: View {
                             onExpand: onExpand
                         )
                     }
+                }
+            }
+            .task {
+                if isExpanded {
+                    onExpand(node.path)
                 }
             }
         }

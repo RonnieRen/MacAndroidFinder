@@ -397,6 +397,50 @@ final class DroidADBService {
         }
     }
 
+    /// Pull a remote file to a specific local URL (not a directory).
+    func pullFileToURL(deviceSerial: String, remotePath: String, localURL: URL) throws {
+        let result = try runBridgeWithStatus(args: ["-s", deviceSerial, "pull", remotePath, localURL.path])
+        guard result.status == 0 else {
+            throw DroidBridgeError.commandFailed(result.stderr.isEmpty ? L10n.downloadFileFailed() : result.stderr)
+        }
+    }
+
+    /// Query Android MediaStore to find the system-generated thumbnail for an image.
+    /// Returns the remote path of the thumbnail, or nil if not found.
+    func findAndroidThumbnailPath(deviceSerial: String, remotePath: String) -> String? {
+        let filename = (remotePath as NSString).lastPathComponent
+
+        // Ask MediaStore for the _id of this file
+        guard let output = try? runBridge(args: [
+            "-s", deviceSerial, "shell",
+            "content", "query",
+            "--uri", "content://media/external/images/media",
+            "--where", "display_name='\(filename)'",
+            "--projection", "_id"
+        ]) else { return nil }
+
+        // Parse "Row: 0 _id=12345"
+        var mediaID: String?
+        for line in output.components(separatedBy: .newlines) {
+            if let range = line.range(of: "_id=") {
+                let digits = line[range.upperBound...].prefix(while: { $0.isNumber })
+                if !digits.isEmpty { mediaID = String(digits); break }
+            }
+        }
+        guard let mediaID else { return nil }
+
+        // Thumbnails live in .thumbnails/ one or two levels above the file
+        let parentPath  = (remotePath as NSString).deletingLastPathComponent
+        let grandParent = (parentPath  as NSString).deletingLastPathComponent
+
+        for dir in [parentPath, grandParent] {
+            let candidate = "\(dir)/.thumbnails/\(mediaID).jpg"
+            let check = try? runBridgeWithStatus(args: ["-s", deviceSerial, "shell", "test", "-f", candidate])
+            if check?.status == 0 { return candidate }
+        }
+        return nil
+    }
+
     func deletePath(deviceSerial: String, remotePath: String) throws {
         let cleanPath = remotePath.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanPath.isEmpty, cleanPath != "/" else {

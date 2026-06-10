@@ -1,0 +1,149 @@
+import Foundation
+
+// MARK: - L10n
+//
+// Bilingual (English / Simplified Chinese) static string table. The active
+// language is derived from `Locale.preferredLanguages` at call time.
+
+enum L10n {
+    static var currentLanguage: AppLanguage {
+        let code = Locale.preferredLanguages.first?.lowercased() ?? "en"
+        if code.hasPrefix("zh") {
+            return .chineseSimplified
+        }
+        return .english
+    }
+
+    static func text(_ english: String, _ chineseSimplified: String) -> String {
+        switch currentLanguage {
+        case .english:
+            return english
+        case .chineseSimplified:
+            return chineseSimplified
+        }
+    }
+
+    // MARK: - Status / errors
+
+    static func ready() -> String { text("Ready", "准备就绪") }
+    static func adbNotFound() -> String { text("adb not found. Please install Android Platform Tools first.", "未找到 adb。请先安装 Android Platform Tools。") }
+    static func parseDirectoryFailed() -> String { text("Failed to parse Android directory listing.", "解析 Android 文件列表失败。") }
+    static func downloadFileFailed() -> String { text("File download failed.", "文件下载失败。") }
+    static func uploadFileFailed() -> String { text("File upload failed.", "文件上传失败。") }
+    static func adbExecuteFailed() -> String { text("adb command failed.", "adb 执行失败。") }
+    static func adbTimedOut() -> String { text("adb command timed out.", "adb 命令执行超时。") }
+    static func downloadingPercent(_ name: String, _ percent: Int) -> String { text("Downloading \(name)… \(percent)%", "正在下载 \(name)… \(percent)%") }
+    static func waiting() -> String { text("Pending", "等待中") }
+    static func uploading() -> String { text("Uploading", "上传中") }
+    static func completed() -> String { text("Completed", "已完成") }
+    static func failed() -> String { text("Failed", "失败") }
+    static func uploadDone() -> String { text("Upload completed", "上传完成") }
+    static func uploaded(file: String) -> String { text("Uploaded: \(file)", "已上传：\(file)") }
+    static func uploadFailed(file: String) -> String { text("Upload failed: \(file)", "上传失败：\(file)") }
+    static func loadedItems(_ count: Int) -> String { text("Loaded \(count) item(s)", "已加载 \(count) 项") }
+    static func directoryReadFailed() -> String { text("Failed to read directory", "目录读取失败") }
+    static func chooseDownloadDirectory() -> String { text("Choose download folder", "选择下载目录") }
+    static func downloadedFile(_ name: String) -> String { text("Downloaded: \(name)", "已下载：\(name)") }
+    static func downloadedDirectory(_ name: String) -> String { text("Downloaded folder: \(name)", "已下载目录：\(name)") }
+    static func downloadFailed() -> String { text("Download failed", "下载失败") }
+    static func downloadDirectoryFailed() -> String { text("Folder download failed", "目录下载失败") }
+    static func uploadTo(_ remoteDirectory: String) -> String { text("Upload to \(remoteDirectory)", "上传到 \(remoteDirectory)") }
+    static func noDevice(_ bridgeInfo: String) -> String { text("No available device (\(bridgeInfo)). Please connect your phone and enable USB debugging.", "没有可用设备（\(bridgeInfo)）。请连接手机并开启 USB 调试。") }
+    static func unableToReadDevice() -> String { text("Unable to read devices.", "无法读取设备。") }
+    static func adbPath(_ path: String?) -> String {
+        text("adb: \(path ?? "not found")", "adb: \(path ?? "未找到")")
+    }
+
+    // MARK: - Toolbar / navigation
+
+    static func refreshDevices() -> String { text("Refresh Devices", "刷新设备") }
+    static func parentDirectory() -> String { text("Up", "上一级") }
+    static func uploadFiles() -> String { text("Upload", "上传文件") }
+    static func uploadHere() -> String { text("Upload Here", "上传到当前目录") }
+    static func openDirectory() -> String { text("Open Folder", "进入目录") }
+    static func downloadFile() -> String { text("Download File", "下载文件") }
+    static func downloadDirectory() -> String { text("Download Folder", "下载目录") }
+    static func deviceLabel() -> String { text("Device", "设备") }
+    static func directoryTree() -> String { text("Directory Tree", "目录树") }
+    static func folder() -> String { text("Folder", "文件夹") }
+    static func file() -> String { text("File", "文件") }
+    static func emptyDirectory() -> String { text("Current directory is empty", "当前目录为空") }
+    static func dropToUpload(_ path: String) -> String { text("Drop to upload to: \(path)", "松开即可上传到：\(path)") }
+    static func uploadQueue() -> String { text("Upload Queue", "上传队列") }
+    static func clearFinished() -> String { text("Clear Finished", "清理已完成") }
+    static func close() -> String { text("Close", "关闭") }
+    static func loadingErrorTitle() -> String { text("Error", "错误") }
+    static func ok() -> String { text("OK", "确定") }
+    static func unknownError() -> String { text("Unknown error", "未知错误") }
+    static func statusUploading() -> String { text("Uploading…", "上传中…") }
+    static func phoneRoot() -> String { text("Phone", "手机") }
+    static func cameraRoot() -> String { text("Camera", "相机") }
+
+    // MARK: - Wireless
+
+    static func wirelessConnect() -> String { text("Wireless Connect", "无线连接") }
+    static func wirelessConnectTitle() -> String { text("Connect Android Over Wi-Fi", "通过 Wi-Fi 连接 Android") }
+    static func usbQuickConnect() -> String { text("USB Quick Connect", "USB 快速连接") }
+    static func usbQuickConnectHint() -> String { text("Connect with USB once and then switch to Wi-Fi automatically.", "先通过 USB 连接一次，再自动切换到 Wi-Fi。") }
+    static func connectUsingUSB() -> String { text("Connect via USB Device", "使用 USB 设备连接") }
+    static func noUSBDeviceSelected() -> String { text("Select a USB-connected device first.", "请先选择一个 USB 连接的设备。") }
+    static func nearbyDevices() -> String { text("Nearby Devices", "附近设备") }
+    static func discover() -> String { text("Discover", "发现设备") }
+    static func noNearbyDevices() -> String { text("No nearby wireless devices found.", "未发现附近无线设备。") }
+    static func pairWithCode() -> String { text("Pair with Code", "使用配对码") }
+    static func pairEndpoint() -> String { text("Pair Endpoint (IP:PORT)", "配对端点（IP:端口）") }
+    static func pairCode() -> String { text("Pair Code", "配对码") }
+    static func connectEndpoint() -> String { text("Connect Endpoint (IP:PORT)", "连接端点（IP:端口）") }
+    static func pairAndConnect() -> String { text("Pair and Connect", "配对并连接") }
+    static func manualConnect() -> String { text("Manual Connect", "手动连接") }
+    static func endpoint() -> String { text("Endpoint (IP:PORT)", "端点（IP:端口）") }
+    static func connect() -> String { text("Connect", "连接") }
+    static func disconnectAll() -> String { text("Disconnect All", "断开全部连接") }
+    static func disconnect() -> String { text("Disconnect", "断开连接") }
+    static func discoveringWireless() -> String { text("Discovering wireless devices…", "正在发现无线设备…") }
+    static func discoveredWirelessCount(_ count: Int) -> String { text("Found \(count) wireless device(s).", "发现 \(count) 个无线设备。") }
+    static func connectedEndpoint(_ endpoint: String) -> String { text("Connected: \(endpoint)", "已连接：\(endpoint)") }
+    static func pairedEndpoint(_ endpoint: String) -> String { text("Paired: \(endpoint)", "已配对：\(endpoint)") }
+    static func disconnectedEndpoint(_ endpoint: String) -> String { text("Disconnected: \(endpoint)", "已断开：\(endpoint)") }
+    static func disconnectedAll() -> String { text("Disconnected all wireless devices.", "已断开所有无线设备连接。") }
+    static func invalidEndpoint() -> String { text("Please enter endpoint as IP:PORT.", "请输入 IP:端口 格式的端点。") }
+    static func invalidPairInput() -> String { text("Please enter pair endpoint, pair code, and connect endpoint.", "请输入配对端点、配对码和连接端点。") }
+    static func wifiConnectFromUSBFailedIP() -> String { text("Failed to get phone Wi-Fi IP from USB device.", "无法从 USB 设备获取手机 Wi-Fi IP。") }
+
+    // MARK: - QR pairing
+
+    static func qrPairTitle() -> String { text("Pair by QR Code", "扫码配对") }
+    static func qrPairHint() -> String { text("On the phone: Developer options → Wireless debugging → Pair device with QR code.", "手机上：开发者选项 → 无线调试 → 使用二维码配对设备。") }
+    static func qrPairStart() -> String { text("Show QR Code", "生成二维码") }
+    static func qrWaitingForScan() -> String { text("Waiting for phone to scan…", "等待手机扫码…") }
+    static func qrPairing() -> String { text("Pairing…", "正在配对…") }
+    static func qrConnecting() -> String { text("Connecting…", "正在连接…") }
+    static func qrPairSucceeded(_ endpoint: String) -> String { text("Paired and connected: \(endpoint)", "已配对并连接：\(endpoint)") }
+    static func qrPairTimeout() -> String { text("Timed out waiting for the phone to scan.", "等待手机扫码超时。") }
+    static func qrConnectEndpointNotFound() -> String { text("Paired, but no connect endpoint was found.", "已配对，但未发现连接端点。") }
+    static func retry() -> String { text("Try Again", "重试") }
+
+    // MARK: - Delete / edit
+
+    static func deleteItem() -> String { text("Delete", "删除") }
+    static func deleteFile() -> String { text("Delete File", "删除文件") }
+    static func deleteFolder() -> String { text("Delete Folder", "删除文件夹") }
+    static func deleteConfirmTitle() -> String { text("Confirm Delete", "确认删除") }
+    static func deleteConfirmMessage(_ name: String) -> String { text("Delete \"\(name)\" permanently?", "确定永久删除 “\(name)” 吗？") }
+    static func deleteConfirmMessageFolder(_ name: String) -> String { text("Delete folder \"\(name)\" and all its contents permanently?", "确定永久删除文件夹 “\(name)” 及其全部内容吗？") }
+    static func cancel() -> String { text("Cancel", "取消") }
+    static func deletedFile(_ name: String) -> String { text("Deleted file: \(name)", "已删除文件：\(name)") }
+    static func deletedFolder(_ name: String) -> String { text("Deleted folder: \(name)", "已删除文件夹：\(name)") }
+    static func deleteFailed() -> String { text("Delete failed", "删除失败") }
+    static func deleteRootNotAllowed() -> String { text("Deleting root path is not allowed.", "不允许删除根目录。") }
+    static func openedFile(_ name: String) -> String { text("Opened: \(name)", "已打开：\(name)") }
+    static func openFile() -> String { text("Open", "打开") }
+    static func editMode() -> String { text("Edit", "编辑") }
+    static func done() -> String { text("Done", "完成") }
+    static func deleteSelected() -> String { text("Delete Selected", "删除已选") }
+    static func selectedCount(_ count: Int) -> String { text("\(count) selected", "已选 \(count) 项") }
+    static func deleteSelectedConfirmMessage(_ count: Int) -> String {
+        text("Delete \(count) selected item(s) permanently?", "确定永久删除已选的 \(count) 项吗？")
+    }
+    static func deletedItemsCount(_ count: Int) -> String { text("Deleted \(count) item(s)", "已删除 \(count) 项") }
+}

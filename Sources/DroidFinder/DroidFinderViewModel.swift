@@ -4,6 +4,7 @@ import Foundation
 struct RemoteDirectoryNode: Identifiable, Hashable {
     let path: String
     let name: String
+    var autoExpand: Bool = false
 
     var id: String { path }
 }
@@ -62,7 +63,7 @@ final class DirectoryTreeStore: ObservableObject {
         directoryTreeRoots = [
             RemoteDirectoryNode(path: "/", name: "/"),
             RemoteDirectoryNode(path: "/sdcard", name: L10n.phoneRoot()),
-            RemoteDirectoryNode(path: "/sdcard/DCIM/Camera", name: L10n.cameraRoot())
+            RemoteDirectoryNode(path: "/sdcard/DCIM", name: "DCIM", autoExpand: true)
         ]
 
         for root in directoryTreeRoots {
@@ -234,6 +235,7 @@ final class DroidFinderViewModel: ObservableObject {
 
     let directoryTreeStore: DirectoryTreeStore
     let uploadQueueStore: UploadQueueStore
+    let imagePreviewService: ImagePreviewService
 
     private let bridgeService: DroidADBService
     private var deviceAutoRefreshTask: Task<Void, Never>?
@@ -243,6 +245,7 @@ final class DroidFinderViewModel: ObservableObject {
         self.bridgeService = service
         self.directoryTreeStore = DirectoryTreeStore(bridgeService: service)
         self.uploadQueueStore = UploadQueueStore(bridgeService: service)
+        self.imagePreviewService = ImagePreviewService(bridge: service)
 
         uploadQueueStore.onStatus = { [weak self] message, error in
             self?.statusMessage = message
