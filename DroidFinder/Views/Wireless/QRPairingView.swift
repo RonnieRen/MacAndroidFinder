@@ -94,7 +94,7 @@ struct QRPairingView: View {
 
     // MARK: - QR rendering
 
-    private static func qrImage(from string: String) -> NSImage? {
+    static func qrImage(from string: String) -> NSImage? {
         let filter = CIFilter.qrCodeGenerator()
         filter.message = Data(string.utf8)
         filter.correctionLevel = "M"

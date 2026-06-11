@@ -64,8 +64,12 @@ final class DroidADBService {
 
     func listDirectory(deviceSerial: String, path: String) throws -> [DroidFileItem] {
         let cleanPath = path.isEmpty ? "/" : path
+        // Trailing slash forces `ls` to dereference symlinked directories
+        // (/sdcard → /storage/self/primary). Without it, toybox ls lists the
+        // symlink itself as a single bogus entry.
+        let listTarget = cleanPath.hasSuffix("/") ? cleanPath : cleanPath + "/"
         do {
-            let output = try runBridge(args: ["-s", deviceSerial, "shell", "ls", "-l", "-p", shellQuoted(cleanPath)])
+            let output = try runBridge(args: ["-s", deviceSerial, "shell", "ls", "-l", "-p", shellQuoted(listTarget)])
             let lines = output
                 .components(separatedBy: .newlines)
                 .map { $0.trimmingCharacters(in: .whitespaces) }
@@ -79,7 +83,7 @@ final class DroidADBService {
             // Fall through to the simpler listing format.
         }
 
-        let fallbackOutput = try runBridge(args: ["-s", deviceSerial, "shell", "ls", "-1", "-a", "-p", "-F", shellQuoted(cleanPath)])
+        let fallbackOutput = try runBridge(args: ["-s", deviceSerial, "shell", "ls", "-1", "-a", "-p", "-F", shellQuoted(listTarget)])
         let fallbackLines = fallbackOutput
             .components(separatedBy: .newlines)
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -111,6 +115,9 @@ final class DroidADBService {
         guard normalizedName != "." && normalizedName != ".." && !normalizedName.isEmpty else {
             return nil
         }
+        // A name containing "/" means ls echoed the queried path itself
+        // (file/symlink argument) — not a real child entry.
+        guard !normalizedName.contains("/") else { return nil }
 
         let itemType: DroidFileItem.ItemType
         switch firstChar {
@@ -150,6 +157,7 @@ final class DroidADBService {
         guard normalizedName != "." && normalizedName != ".." && !normalizedName.isEmpty else {
             return nil
         }
+        guard !normalizedName.contains("/") else { return nil }
 
         let fullPath = buildRemotePath(parentPath: parentPath, name: normalizedName)
         return DroidFileItem(

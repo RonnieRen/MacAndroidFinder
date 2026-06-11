@@ -53,7 +53,8 @@ struct DroidFinderApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(viewModel)
-                .frame(minWidth: 900, minHeight: 560)
+                .frame(minWidth: 1180, minHeight: 700)
         }
+        .windowStyle(.hiddenTitleBar)
     }
 }

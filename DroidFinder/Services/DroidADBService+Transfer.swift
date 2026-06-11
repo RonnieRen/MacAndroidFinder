@@ -8,6 +8,38 @@ import Foundation
 // run inside a pseudo-terminal (pty) and the master side is read
 // incrementally. Callers that pass no `onPercent` get a plain pipe run.
 
+// MARK: - TransferCancelToken
+
+/// Hand one of these to pull/push to allow cancelling a transfer in flight.
+/// `cancel()` is thread-safe and terminates the underlying adb process.
+final class TransferCancelToken: @unchecked Sendable {
+    private let lock = NSLock()
+    private var process: Process?
+    private var cancelled = false
+
+    func register(_ p: Process) {
+        lock.lock()
+        process = p
+        let alreadyCancelled = cancelled
+        lock.unlock()
+        if alreadyCancelled { p.terminate() }
+    }
+
+    func cancel() {
+        lock.lock()
+        cancelled = true
+        let p = process
+        lock.unlock()
+        p?.terminate()
+    }
+
+    var isCancelled: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return cancelled
+    }
+}
+
 extension DroidADBService {
     // MARK: - Public API
 
@@ -16,12 +48,17 @@ extension DroidADBService {
         deviceSerial: String,
         remotePath: String,
         localDirectory: URL,
-        onPercent: ((Int) -> Void)? = nil
+        onPercent: ((Int) -> Void)? = nil,
+        cancelToken: TransferCancelToken? = nil
     ) throws {
         let result = try runTransfer(
             args: ["-s", deviceSerial, "pull", remotePath, localDirectory.path],
-            onPercent: onPercent
+            onPercent: onPercent,
+            cancelToken: cancelToken
         )
+        if cancelToken?.isCancelled == true {
+            throw DroidBridgeError.cancelled
+        }
         guard result.status == 0 else {
             throw DroidBridgeError.commandFailed(Self.lastLine(of: result.output) ?? L10n.downloadFileFailed())
         }
@@ -32,12 +69,17 @@ extension DroidADBService {
         deviceSerial: String,
         remotePath: String,
         localURL: URL,
-        onPercent: ((Int) -> Void)? = nil
+        onPercent: ((Int) -> Void)? = nil,
+        cancelToken: TransferCancelToken? = nil
     ) throws {
         let result = try runTransfer(
             args: ["-s", deviceSerial, "pull", remotePath, localURL.path],
-            onPercent: onPercent
+            onPercent: onPercent,
+            cancelToken: cancelToken
         )
+        if cancelToken?.isCancelled == true {
+            throw DroidBridgeError.cancelled
+        }
         guard result.status == 0 else {
             throw DroidBridgeError.commandFailed(Self.lastLine(of: result.output) ?? L10n.downloadFileFailed())
         }
@@ -47,12 +89,17 @@ extension DroidADBService {
         deviceSerial: String,
         localFile: URL,
         remoteDirectory: String,
-        onPercent: ((Int) -> Void)? = nil
+        onPercent: ((Int) -> Void)? = nil,
+        cancelToken: TransferCancelToken? = nil
     ) throws {
         let result = try runTransfer(
             args: ["-s", deviceSerial, "push", localFile.path, remoteDirectory],
-            onPercent: onPercent
+            onPercent: onPercent,
+            cancelToken: cancelToken
         )
+        if cancelToken?.isCancelled == true {
+            throw DroidBridgeError.cancelled
+        }
         guard result.status == 0 else {
             throw DroidBridgeError.commandFailed(Self.lastLine(of: result.output) ?? L10n.uploadFileFailed())
         }
@@ -66,7 +113,8 @@ extension DroidADBService {
 
     private func runTransfer(
         args: [String],
-        onPercent: ((Int) -> Void)?
+        onPercent: ((Int) -> Void)?,
+        cancelToken: TransferCancelToken? = nil
     ) throws -> (status: Int32, output: String) {
         // No progress requested → no reason to pay the pty cost.
         guard let onPercent else {
@@ -103,6 +151,7 @@ extension DroidADBService {
             try? masterHandle.close()
             throw error
         }
+        cancelToken?.register(process)
 
         // Close the parent's slave copy so the master read loop sees EOF
         // (EIO on macOS) once adb exits.

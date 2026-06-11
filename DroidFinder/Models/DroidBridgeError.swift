@@ -7,6 +7,7 @@ enum DroidBridgeError: LocalizedError {
     case commandFailed(String)
     case parseFailed
     case timedOut
+    case cancelled
 
     var errorDescription: String? {
         switch self {
@@ -18,6 +19,8 @@ enum DroidBridgeError: LocalizedError {
             return L10n.parseDirectoryFailed()
         case .timedOut:
             return L10n.adbTimedOut()
+        case .cancelled:
+            return L10n.transferCancelled()
         }
     }
 }

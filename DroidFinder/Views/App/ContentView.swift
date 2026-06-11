@@ -1,46 +1,80 @@
+import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
 // MARK: - ContentView
 //
-// Top-level window content: top toolbar, breadcrumbs, the explorer split view
-// and a status footer, plus various overlays (upload queue panel, wireless
-// sheet, error and delete confirmation alerts).
+// Window assembly for the 2026-06 redesign:
+//   toolbar (60) / sidebar (224) + pathbar (44) + table / preview (292)
+//   / status bar (30), plus the connect empty state, upload queue overlay,
+//   wireless sheet and alerts.
 
 struct ContentView: View {
     @EnvironmentObject var viewModel: DroidFinderViewModel
 
-    /// Multi-select for drag-out (cmd+click / shift+click in file list).
     @State private var fileSelection: Set<String> = []
-    @State private var selectedSidebarPath: String?
-
     @State private var isDropTargeted = false
-    /// ID of the item the user explicitly dismissed the preview for.
-    /// Selecting a different item clears this so the preview comes back.
-    @State private var dismissedPreviewID: String?
-    @State private var isUploadQueuePanelVisible = true
+    @State private var isTransferPopoverVisible = true
     @State private var isWirelessSheetPresented = false
     @State private var pendingDeleteItem: DroidFileItem?
-    @State private var isEditMode = false
-    @State private var selectedEditItemIDs: Set<String> = []
     @State private var isBulkDeleteConfirmPresented = false
+    @AppStorage("explorerViewMode") private var viewModeRaw = ExplorerViewMode.list.rawValue
 
     var body: some View {
-        VStack(spacing: 10) {
-            topBar
-            breadcrumbBar
-            Divider()
-            explorer
-            footer
+        VStack(spacing: 0) {
+            MainToolbarView(
+                devices: viewModel.devices,
+                selectedDevice: viewModel.selectedDevice,
+                deviceDetail: viewModel.deviceDetail,
+                isOffline: viewModel.selectedDevice == nil,
+                searchText: $viewModel.searchText,
+                viewMode: viewModeBinding,
+                canSaveToMac: !selectedItems.isEmpty,
+                transferActiveCount: viewModel.transferQueueStore.tasks.isEmpty
+                    ? nil
+                    : viewModel.transferQueueStore.activeCount,
+                onSelectDevice: { selectDevice($0) },
+                onOpenWireless: { isWirelessSheetPresented = true },
+                onRefresh: { Task { await viewModel.refreshDevices() } },
+                onSendToPhone: {
+                    isTransferPopoverVisible = true
+                    viewModel.chooseAndUploadFiles(to: dropTargetDirectoryPath)
+                },
+                onSaveToMac: { saveSelectionToMac() },
+                onToggleTransfers: { isTransferPopoverVisible.toggle() }
+            )
+
+            if viewModel.selectedDevice == nil {
+                ConnectEmptyView(
+                    qrController: viewModel.qrPairingController,
+                    onOpenAdvanced: { isWirelessSheetPresented = true }
+                )
+            } else {
+                explorerBody
+            }
+
+            StatusBarView(
+                itemCount: viewModel.displayedFiles.count,
+                selectionCount: selectedItems.count,
+                selectionBytes: selectionBytes,
+                deviceName: viewModel.selectedDevice?.displayName,
+                freeBytes: viewModel.deviceDetail?.storageFreeBytes,
+                isBusy: viewModel.isBusy || viewModel.transferQueueStore.isTransferring,
+                statusMessage: viewModel.statusMessage,
+                transferSummary: transferSummary
+            )
         }
-        .padding(16)
-        .overlay { uploadQueueOverlay }
-        .onChange(of: viewModel.uploadQueueStore.uploadQueue.isEmpty) { isEmpty in
-            if isEmpty { isUploadQueuePanelVisible = true }
+        .ignoresSafeArea()
+        .background(DFTheme.winBG)
+        .overlay(alignment: .topTrailing) { transferPopoverOverlay }
+        .onChange(of: viewModel.transferQueueStore.tasks.isEmpty) { isEmpty in
+            if isEmpty { isTransferPopoverVisible = true }
+        }
+        .onChange(of: fileSelection) { newSelection in
+            updatePreview(for: newSelection)
         }
         .sheet(isPresented: $isWirelessSheetPresented) {
             WirelessConnectionSheet(viewModel: viewModel)
-                .frame(minWidth: 680, minHeight: 480)
         }
         .modifier(ErrorAlertModifier(errorMessage: $viewModel.errorMessage))
         .modifier(
@@ -52,142 +86,146 @@ struct ContentView: View {
                 }
             )
         )
-        .modifier(
-            DeleteSelectedAlertModifier(
-                isPresented: $isBulkDeleteConfirmPresented,
-                count: selectedEditItemIDs.count,
-                onConfirm: confirmBulkDelete
-            )
-        )
-    }
-
-    // MARK: - Subviews
-
-    private var topBar: some View {
-        TopBarView(
-            devices: viewModel.devices,
-            selectedDevice: viewModel.selectedDevice,
-            onDeviceSelected: { device in
-                viewModel.selectedDevice = device
+        .alert(L10n.deleteConfirmTitle(), isPresented: $isBulkDeleteConfirmPresented) {
+            Button(L10n.cancel(), role: .cancel) {}
+            Button(L10n.deleteSelected(), role: .destructive) {
+                viewModel.delete(items: selectedItems)
                 fileSelection = []
-                viewModel.imagePreviewService.reset()
-                if device != nil {
-                    try? viewModel.loadDirectory(path: viewModel.currentPath)
-                }
-            },
-            onRefresh: { Task { await viewModel.refreshDevices() } },
-            selectedFile: isEditMode ? nil : selectedFile,
-            onOpenWireless: { isWirelessSheetPresented = true },
-            onDownloadItem: { viewModel.download($0) },
-            onDeleteItem: { pendingDeleteItem = $0 }
-        )
-    }
-
-    private var breadcrumbBar: some View {
-        BreadcrumbBarView(
-            breadcrumbs: breadcrumbs,
-            canGoParent: viewModel.currentPath != "/",
-            onGoParent: {
-                viewModel.goParent()
-                fileSelection = []
-            },
-            onNavigate: { openDirectory($0) }
-        )
-    }
-
-    private var explorer: some View {
-        ExplorerSplitView(
-            directoryRoots: viewModel.directoryTreeStore.directoryTreeRoots,
-            selectedSidebarPath: $selectedSidebarPath,
-            files: viewModel.files,
-            fileSelection: $fileSelection,
-            isEditMode: $isEditMode,
-            selectedEditItemIDs: $selectedEditItemIDs,
-            isDropTargeted: $isDropTargeted,
-            dropTargetDirectoryPath: dropTargetDirectoryPath,
-            onSelectDirectory: { openDirectory($0) },
-            childrenForDirectory: { viewModel.directoryTreeStore.childrenForDirectory(path: $0) },
-            isDirectoryLoading: { viewModel.directoryTreeStore.isDirectoryLoading(path: $0) },
-            onExpandDirectory: { viewModel.directoryTreeStore.ensureLoaded(path: $0) },
-            onUploadHere: {
-                isUploadQueuePanelVisible = true
-                viewModel.chooseAndUploadFiles(to: dropTargetDirectoryPath)
-            },
-            onToggleEditMode: toggleEditMode,
-            onDeleteSelected: { isBulkDeleteConfirmPresented = true },
-            onDownloadItem: { viewModel.download($0) },
-            onDeleteItem: { pendingDeleteItem = $0 },
-            onDropProviders: { providers in handleFileDrop(providers) },
-            onOpenInApp: { viewModel.openInApp($0) },
-            dragItemProviders: { items in viewModel.makeFilePromiseProviders(for: items) },
-            previewService: viewModel.imagePreviewService,
-            previewItem: previewItem,
-            onClosePreview: { id in dismissedPreviewID = id }
-        )
-        .onChange(of: fileSelection) { newSel in
-            let singleID = newSel.count == 1 ? newSel.first : nil
-            if let id = singleID,
-               let item = viewModel.files.first(where: { $0.id == id }),
-               let serial = viewModel.selectedDevice?.id {
-                viewModel.imagePreviewService.request(item: item, deviceSerial: serial)
-            } else {
-                viewModel.imagePreviewService.reset()
             }
+        } message: {
+            Text(L10n.deleteSelectedConfirmMessage(selectedItems.count))
         }
     }
 
-    private var footer: some View {
-        AppFooterBarView(
-            isBusy: viewModel.isBusy || viewModel.uploadQueueStore.isUploading,
-            statusMessage: viewModel.statusMessage
-        )
+    // MARK: - Explorer body
+
+    private var explorerBody: some View {
+        HStack(spacing: 0) {
+            SidebarView(
+                treeStore: viewModel.directoryTreeStore,
+                currentPath: viewModel.currentPath,
+                deviceDetail: viewModel.deviceDetail,
+                onNavigate: { navigate(to: $0) },
+                onOpenQuickAccess: { openQuickAccess($0) }
+            )
+
+            VStack(spacing: 0) {
+                PathBarView(
+                    breadcrumbs: breadcrumbs,
+                    canGoBack: viewModel.canGoBack,
+                    canGoForward: viewModel.canGoForward,
+                    onBack: { viewModel.goBack(); fileSelection = [] },
+                    onForward: { viewModel.goForward(); fileSelection = [] },
+                    onNavigate: { navigate(to: $0) }
+                )
+
+                if viewModeBinding.wrappedValue == .grid {
+                    FileGridView(
+                        files: viewModel.displayedFiles,
+                        isSearching: !viewModel.searchText.isEmpty,
+                        fileSelection: $fileSelection,
+                        isDropTargeted: $isDropTargeted,
+                        dropTargetDirectoryPath: dropTargetDirectoryPath,
+                        thumbnailStore: viewModel.thumbnailStore,
+                        deviceSerial: viewModel.selectedDevice?.id,
+                        onOpenDirectory: { navigate(to: $0) },
+                        onOpenInApp: { viewModel.openInApp($0) },
+                        onDownloadItem: { viewModel.download($0) },
+                        onDeleteItem: { pendingDeleteItem = $0 },
+                        onDownloadSelection: { saveSelectionToMac() },
+                        onDeleteSelection: { isBulkDeleteConfirmPresented = true },
+                        onDropProviders: { handleFileDrop($0) },
+                        dragItemProviders: { viewModel.makeFilePromiseProviders(for: $0) }
+                    )
+                } else {
+                    FileTableView(
+                        files: viewModel.displayedFiles,
+                        isSearching: !viewModel.searchText.isEmpty,
+                        fileSelection: $fileSelection,
+                        isDropTargeted: $isDropTargeted,
+                        dropTargetDirectoryPath: dropTargetDirectoryPath,
+                        thumbnailStore: viewModel.thumbnailStore,
+                        deviceSerial: viewModel.selectedDevice?.id,
+                        onOpenDirectory: { navigate(to: $0) },
+                        onOpenInApp: { viewModel.openInApp($0) },
+                        onDownloadItem: { viewModel.download($0) },
+                        onDeleteItem: { pendingDeleteItem = $0 },
+                        onDownloadSelection: { saveSelectionToMac() },
+                        onDeleteSelection: { isBulkDeleteConfirmPresented = true },
+                        onDropProviders: { handleFileDrop($0) },
+                        dragItemProviders: { viewModel.makeFilePromiseProviders(for: $0) }
+                    )
+                }
+            }
+
+            if let item = selectedFile {
+                PreviewPanelView(
+                    previewService: viewModel.imagePreviewService,
+                    item: item,
+                    onSaveToMac: { viewModel.download(item) },
+                    onShare: { anchor in viewModel.share(item, from: anchor) },
+                    onOpen: {
+                        if item.isDirectory {
+                            navigate(to: item.fullPath)
+                        } else {
+                            viewModel.openInApp(item)
+                        }
+                    },
+                    onDelete: { pendingDeleteItem = item }
+                )
+            }
+        }
     }
 
     @ViewBuilder
-    private var uploadQueueOverlay: some View {
-        if shouldShowUploadQueuePanel {
-            ZStack(alignment: .bottomTrailing) {
-                Color.black.opacity(0.001)
-                    .contentShape(Rectangle())
-                    .onTapGesture { isUploadQueuePanelVisible = false }
-
-                UploadQueuePanelView(
-                    uploadQueue: viewModel.uploadQueueStore.uploadQueue,
-                    progress: viewModel.uploadQueueStore.uploadProgress,
-                    onClearFinished: { viewModel.uploadQueueStore.clearFinished() },
-                    onClose: { isUploadQueuePanelVisible = false }
-                )
-                .padding(16)
-            }
+    private var transferPopoverOverlay: some View {
+        if isTransferPopoverVisible && !viewModel.transferQueueStore.tasks.isEmpty {
+            TransferPopoverView(
+                store: viewModel.transferQueueStore,
+                onClose: { isTransferPopoverVisible = false }
+            )
+            .padding(.top, DFTheme.toolbarHeight + 6)
+            .padding(.trailing, 14)
         }
+    }
+
+    private var transferSummary: String? {
+        let store = viewModel.transferQueueStore
+        guard store.activeCount > 0 else { return nil }
+        var summary = L10n.transferringSummary(store.activeCount)
+        if let speed = store.currentSpeed {
+            summary += " · " + DeviceDetail.formatBytes(Int64(speed)) + "/s"
+        }
+        return summary
     }
 
     // MARK: - Derived state
 
-    private var selectedItemID: String? {
-        fileSelection.count == 1 ? fileSelection.first : nil
+    private var viewModeBinding: Binding<ExplorerViewMode> {
+        Binding(
+            get: { ExplorerViewMode(rawValue: viewModeRaw) ?? .list },
+            set: { viewModeRaw = $0.rawValue }
+        )
+    }
+
+    private var selectedItems: [DroidFileItem] {
+        viewModel.files.filter { fileSelection.contains($0.id) }
     }
 
     private var selectedFile: DroidFileItem? {
-        guard let selectedItemID else { return nil }
-        return viewModel.files.first(where: { $0.id == selectedItemID })
+        fileSelection.count == 1 ? selectedItems.first : nil
     }
 
-    private var previewItem: DroidFileItem? {
-        guard !isEditMode, let f = selectedFile, ImagePreviewService.isImage(f.name) else { return nil }
-        if dismissedPreviewID == f.id { return nil }
-        return f
+    private var selectionBytes: Int64? {
+        let total = selectedItems.compactMap { Int64($0.sizeDescription) }.reduce(0, +)
+        return total > 0 ? total : nil
     }
 
     private var breadcrumbs: [(name: String, path: String)] {
         if viewModel.currentPath == "/" {
             return [("/", "/")]
         }
-
-        let components = viewModel.currentPath
-            .split(separator: "/")
-            .map(String.init)
-
+        let components = viewModel.currentPath.split(separator: "/").map(String.init)
         var result: [(String, String)] = [("/", "/")]
         var current = ""
         for component in components {
@@ -204,33 +242,51 @@ struct ContentView: View {
         return viewModel.currentPath
     }
 
-    private var shouldShowUploadQueuePanel: Bool {
-        isUploadQueuePanelVisible && !viewModel.uploadQueueStore.uploadQueue.isEmpty
-    }
-
     // MARK: - Actions
 
-    private func openDirectory(_ path: String) {
-        try? viewModel.loadDirectory(path: path)
-        selectedSidebarPath = path
+    private func navigate(to path: String) {
+        viewModel.navigate(to: path)
         fileSelection = []
     }
 
-    private func toggleEditMode() {
-        isEditMode.toggle()
-        if !isEditMode {
-            selectedEditItemIDs.removeAll()
+    private func openQuickAccess(_ item: QuickAccessItem) {
+        for path in item.candidatePaths {
+            if viewModel.navigate(to: path, quiet: true) {
+                fileSelection = []
+                return
+            }
+        }
+        // None of the candidates exist on this device.
+        viewModel.statusMessage = L10n.quickAccessNotFound(item.title)
+    }
+
+    private func selectDevice(_ device: DroidDevice) {
+        viewModel.selectedDevice = device
+        fileSelection = []
+        viewModel.imagePreviewService.reset()
+        viewModel.thumbnailStore.reset()
+        viewModel.refreshDeviceDetail()
+        try? viewModel.loadDirectory(path: viewModel.currentPath)
+    }
+
+    private func saveSelectionToMac() {
+        let items = selectedItems
+        guard !items.isEmpty else { return }
+        if items.count == 1 {
+            viewModel.download(items[0])
         } else {
-            fileSelection = []
+            viewModel.download(items: items)
         }
     }
 
-    private func confirmBulkDelete() {
-        let selectedItems = viewModel.files.filter { selectedEditItemIDs.contains($0.id) }
-        viewModel.delete(items: selectedItems)
-        selectedEditItemIDs.removeAll()
-        isEditMode = false
-        fileSelection = []
+    private func updatePreview(for selection: Set<String>) {
+        if let id = selection.count == 1 ? selection.first : nil,
+           let item = viewModel.files.first(where: { $0.id == id }),
+           let serial = viewModel.selectedDevice?.id {
+            viewModel.imagePreviewService.request(item: item, deviceSerial: serial)
+        } else {
+            viewModel.imagePreviewService.reset()
+        }
     }
 
     private func handleFileDrop(_ providers: [NSItemProvider]) -> Bool {
@@ -248,7 +304,7 @@ struct ContentView: View {
 
                 guard let url else { return }
                 DispatchQueue.main.async {
-                    isUploadQueuePanelVisible = true
+                    isTransferPopoverVisible = true
                     viewModel.uploadLocalFiles([url], to: dropTargetDirectoryPath)
                 }
             }
@@ -298,21 +354,6 @@ private struct DeleteOneAlertModifier: ViewModifier {
             Text(item.isDirectory
                  ? L10n.deleteConfirmMessageFolder(item.name)
                  : L10n.deleteConfirmMessage(item.name))
-        }
-    }
-}
-
-private struct DeleteSelectedAlertModifier: ViewModifier {
-    @Binding var isPresented: Bool
-    let count: Int
-    let onConfirm: () -> Void
-
-    func body(content: Content) -> some View {
-        content.alert(L10n.deleteConfirmTitle(), isPresented: $isPresented) {
-            Button(L10n.cancel(), role: .cancel) {}
-            Button(L10n.deleteSelected(), role: .destructive, action: onConfirm)
-        } message: {
-            Text(L10n.deleteSelectedConfirmMessage(count))
         }
     }
 }

@@ -11,8 +11,9 @@ final class DirectoryTreeStore: ObservableObject {
 
     private let bridgeService: DroidADBService
     private var selectedDeviceSerial: String?
-    private var directoryChildrenCache: [String: [RemoteDirectoryNode]] = [:]
-    private var loadingDirectoryPaths: Set<String> = []
+    /// Published so the sidebar re-renders when lazily-loaded children arrive.
+    @Published private var directoryChildrenCache: [String: [RemoteDirectoryNode]] = [:]
+    @Published private var loadingDirectoryPaths: Set<String> = []
 
     init(bridgeService: DroidADBService) {
         self.bridgeService = bridgeService
@@ -29,9 +30,7 @@ final class DirectoryTreeStore: ObservableObject {
         }
 
         directoryTreeRoots = [
-            RemoteDirectoryNode(path: "/", name: "/"),
-            RemoteDirectoryNode(path: "/sdcard", name: L10n.phoneRoot()),
-            RemoteDirectoryNode(path: "/sdcard/DCIM", name: "DCIM", autoExpand: true)
+            RemoteDirectoryNode(path: "/sdcard", name: "sdcard", autoExpand: true)
         ]
 
         for root in directoryTreeRoots {

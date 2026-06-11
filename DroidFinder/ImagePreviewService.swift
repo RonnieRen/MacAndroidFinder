@@ -177,12 +177,12 @@ final class ImagePreviewService: ObservableObject {
 
     // MARK: - Image utilities
 
-    private static func tempURL(ext: String) -> URL {
+    static func tempURL(ext: String) -> URL {
         FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString + "." + ext)
     }
 
-    private static func resize(_ image: NSImage, maxPx: CGFloat) -> NSImage {
+    static func resize(_ image: NSImage, maxPx: CGFloat) -> NSImage {
         let sz = image.size
         guard sz.width > 0, sz.height > 0 else { return image }
         let scale = min(maxPx / sz.width, maxPx / sz.height, 1.0)
@@ -199,7 +199,7 @@ final class ImagePreviewService: ObservableObject {
         return out
     }
 
-    private static func writeJPEG(_ image: NSImage, to url: URL) {
+    static func writeJPEG(_ image: NSImage, to url: URL) {
         guard let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return }
         let rep = NSBitmapImageRep(cgImage: cg)
         guard let data = rep.representation(using: .jpeg, properties: [.compressionFactor: 0.85])

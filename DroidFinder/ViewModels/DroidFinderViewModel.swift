@@ -6,7 +6,7 @@ import UniformTypeIdentifiers
 //
 // The top-level view model. Coordinates device discovery, directory
 // navigation, file transfers and wireless ADB pairing. Most actions delegate
-// to either `DroidADBService`, `DirectoryTreeStore`, or `UploadQueueStore`.
+// to either `DroidADBService`, `DirectoryTreeStore`, or `TransferQueueStore`.
 
 @MainActor
 final class DroidFinderViewModel: ObservableObject {
@@ -20,9 +20,18 @@ final class DroidFinderViewModel: ObservableObject {
     @Published var isBusy = false
     @Published var isWirelessBusy = false
 
+    /// Toolbar search — filters `displayedFiles` within the current folder.
+    @Published var searchText = ""
+    /// Battery / storage facts for the selected device (nil until fetched).
+    @Published var deviceDetail: DeviceDetail?
+    /// Browser-style navigation history.
+    @Published private(set) var backStack: [String] = []
+    @Published private(set) var forwardStack: [String] = []
+
     let directoryTreeStore: DirectoryTreeStore
-    let uploadQueueStore: UploadQueueStore
+    let transferQueueStore: TransferQueueStore
     let imagePreviewService: ImagePreviewService
+    let thumbnailStore: ThumbnailStore
 
     let bridgeService: DroidADBService
     private var deviceAutoRefreshTask: Task<Void, Never>?
@@ -46,15 +55,16 @@ final class DroidFinderViewModel: ObservableObject {
         let service = DroidADBService()
         self.bridgeService = service
         self.directoryTreeStore = DirectoryTreeStore(bridgeService: service)
-        self.uploadQueueStore = UploadQueueStore(bridgeService: service)
+        self.transferQueueStore = TransferQueueStore(bridgeService: service)
         self.imagePreviewService = ImagePreviewService(bridge: service)
+        self.thumbnailStore = ThumbnailStore(bridge: service)
 
-        uploadQueueStore.onStatus = { [weak self] message, error in
+        transferQueueStore.onStatus = { [weak self] message, error in
             self?.statusMessage = message
             self?.errorMessage = error
         }
 
-        uploadQueueStore.onBatchCompleted = { [weak self] touchedDirectories in
+        transferQueueStore.onUploadsCompleted = { [weak self] touchedDirectories in
             guard let self else { return }
             for path in touchedDirectories {
                 self.directoryTreeStore.ensureLoaded(path: path, forceRefresh: true)
@@ -99,6 +109,15 @@ final class DroidFinderViewModel: ObservableObject {
             if selectedDeviceChanged || directoryTreeStore.directoryTreeRoots.isEmpty {
                 directoryTreeStore.configureForDevice(serial: self.selectedDevice?.id)
             }
+            if selectedDeviceChanged {
+                backStack = []
+                forwardStack = []
+                thumbnailStore.reset()
+                deviceDetail = nil
+            }
+            if self.selectedDevice != nil, selectedDeviceChanged || deviceDetail == nil {
+                refreshDeviceDetail()
+            }
 
             if self.selectedDevice != nil {
                 if reloadCurrentDirectory || selectedDeviceChanged || files.isEmpty {
@@ -114,9 +133,74 @@ final class DroidFinderViewModel: ObservableObject {
         }
     }
 
+    /// Fetch battery + storage info off the main actor.
+    func refreshDeviceDetail() {
+        guard let serial = selectedDevice?.id else { return }
+        let br = bridgeService
+        Task.detached(priority: .utility) { [weak self] in
+            let detail = br.fetchDeviceDetail(deviceSerial: serial)
+            await MainActor.run { [weak self] in
+                guard let self, self.selectedDevice?.id == serial else { return }
+                self.deviceDetail = detail
+            }
+        }
+    }
+
     // MARK: - Directory navigation
 
-    func loadDirectory(path: String, showBusy: Bool = true) throws {
+    /// Files shown in the table: current directory filtered by the toolbar search.
+    var displayedFiles: [DroidFileItem] {
+        let query = searchText.trimmingCharacters(in: .whitespaces)
+        guard !query.isEmpty else { return files }
+        return files.filter { $0.name.localizedCaseInsensitiveContains(query) }
+    }
+
+    var canGoBack: Bool { !backStack.isEmpty }
+    var canGoForward: Bool { !forwardStack.isEmpty }
+
+    /// User-initiated navigation: records history, clears search.
+    /// Returns false when the directory could not be loaded. `quiet` probing
+    /// (quick-access candidates) suppresses the error alert on failure.
+    @discardableResult
+    func navigate(to path: String, quiet: Bool = false) -> Bool {
+        guard path != currentPath else { return true }
+        let previous = currentPath
+        do {
+            try loadDirectory(path: path, quiet: quiet)
+            backStack.append(previous)
+            forwardStack = []
+            searchText = ""
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    func goBack() {
+        guard let target = backStack.popLast() else { return }
+        let previous = currentPath
+        do {
+            try loadDirectory(path: target)
+            forwardStack.append(previous)
+            searchText = ""
+        } catch {
+            backStack.append(target)
+        }
+    }
+
+    func goForward() {
+        guard let target = forwardStack.popLast() else { return }
+        let previous = currentPath
+        do {
+            try loadDirectory(path: target)
+            backStack.append(previous)
+            searchText = ""
+        } catch {
+            forwardStack.append(target)
+        }
+    }
+
+    func loadDirectory(path: String, showBusy: Bool = true, quiet: Bool = false) throws {
         guard let selectedDevice else {
             files = []
             return
@@ -133,6 +217,9 @@ final class DroidFinderViewModel: ObservableObject {
 
         do {
             files = try bridgeService.listDirectory(deviceSerial: selectedDevice.id, path: path)
+            if path != currentPath {
+                thumbnailStore.cancelPending()
+            }
             currentPath = path
             statusMessage = L10n.loadedItems(files.count)
             errorMessage = nil
@@ -142,6 +229,10 @@ final class DroidFinderViewModel: ObservableObject {
                 // Keep current view unchanged and avoid modal error alerts.
                 errorMessage = nil
                 return
+            }
+            if quiet {
+                // Probing (quick-access candidates): no alert, just fail.
+                throw error
             }
             errorMessage = error.localizedDescription
             statusMessage = L10n.directoryReadFailed()
@@ -162,49 +253,21 @@ final class DroidFinderViewModel: ObservableObject {
     // MARK: - Download / upload
 
     func download(_ item: DroidFileItem) {
-        guard let selectedDevice else { return }
+        download(items: [item])
+    }
+
+    /// Ask for a destination once, then queue every item as a download task.
+    func download(items: [DroidFileItem]) {
+        guard selectedDevice != nil, !items.isEmpty else { return }
 
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
         panel.prompt = L10n.chooseDownloadDirectory()
+        guard panel.runModal() == .OK, let targetDir = panel.url else { return }
 
-        guard panel.runModal() == .OK, let targetDir = panel.url else {
-            return
-        }
-
-        isBusy = true
-        let serial = selectedDevice.id
-        let br = bridgeService
-
-        // Pull on a background task — adb pull of a large file would block
-        // the main actor — and surface adb's live percentage in the footer.
-        Task.detached(priority: .userInitiated) { [weak self] in
-            do {
-                try br.pullFile(
-                    deviceSerial: serial,
-                    remotePath: item.fullPath,
-                    localDirectory: targetDir,
-                    onPercent: { percent in
-                        Task { @MainActor [weak self] in
-                            self?.statusMessage = L10n.downloadingPercent(item.name, percent)
-                        }
-                    }
-                )
-                await MainActor.run { [weak self] in
-                    self?.statusMessage = item.isDirectory ? L10n.downloadedDirectory(item.name) : L10n.downloadedFile(item.name)
-                    self?.errorMessage = nil
-                    self?.isBusy = false
-                }
-            } catch {
-                await MainActor.run { [weak self] in
-                    self?.errorMessage = error.localizedDescription
-                    self?.statusMessage = item.isDirectory ? L10n.downloadDirectoryFailed() : L10n.downloadFailed()
-                    self?.isBusy = false
-                }
-            }
-        }
+        transferQueueStore.enqueueDownloads(items: items, to: targetDir, deviceSerial: selectedDevice?.id)
     }
 
     func chooseAndUploadFiles(to remoteDirectory: String) {
@@ -219,7 +282,7 @@ final class DroidFinderViewModel: ObservableObject {
     }
 
     func uploadLocalFiles(_ urls: [URL], to remoteDirectory: String) {
-        uploadQueueStore.enqueue(urls: urls, remoteDirectory: remoteDirectory, deviceSerial: selectedDevice?.id)
+        transferQueueStore.enqueueUploads(urls: urls, remoteDirectory: remoteDirectory, deviceSerial: selectedDevice?.id)
     }
 
     // MARK: - Delete
@@ -278,107 +341,6 @@ final class DroidFinderViewModel: ObservableObject {
             }
 
             isBusy = false
-        }
-    }
-
-    // MARK: - Wireless
-
-    func discoverWirelessServices() async {
-        isWirelessBusy = true
-        statusMessage = L10n.discoveringWireless()
-        defer { isWirelessBusy = false }
-
-        do {
-            wirelessServices = try bridgeService.listWirelessServices()
-            statusMessage = L10n.discoveredWirelessCount(wirelessServices.count)
-            errorMessage = nil
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    func quickConnectSelectedDeviceViaWiFi() async {
-        guard let selectedDevice, !selectedDevice.id.contains(":") else {
-            errorMessage = L10n.noUSBDeviceSelected()
-            return
-        }
-
-        isWirelessBusy = true
-        defer { isWirelessBusy = false }
-
-        do {
-            let endpoint = try bridgeService.quickConnectFromUSB(deviceSerial: selectedDevice.id)
-            statusMessage = L10n.connectedEndpoint(endpoint)
-            errorMessage = nil
-            await refreshDevices(showBusy: false, reloadCurrentDirectory: true)
-            await discoverWirelessServices()
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    func connectWireless(endpoint: String) async {
-        let trimmed = endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.contains(":") else {
-            errorMessage = L10n.invalidEndpoint()
-            return
-        }
-
-        isWirelessBusy = true
-        defer { isWirelessBusy = false }
-
-        do {
-            try bridgeService.connect(endpoint: trimmed)
-            statusMessage = L10n.connectedEndpoint(trimmed)
-            errorMessage = nil
-            await refreshDevices(showBusy: false, reloadCurrentDirectory: true)
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    func pairAndConnect(pairEndpoint: String, pairCode: String, connectEndpoint: String) async {
-        let pairTarget = pairEndpoint.trimmingCharacters(in: .whitespacesAndNewlines)
-        let code = pairCode.trimmingCharacters(in: .whitespacesAndNewlines)
-        let connectTarget = connectEndpoint.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        guard pairTarget.contains(":"), connectTarget.contains(":"), !code.isEmpty else {
-            errorMessage = L10n.invalidPairInput()
-            return
-        }
-
-        isWirelessBusy = true
-        defer { isWirelessBusy = false }
-
-        do {
-            try bridgeService.pair(endpoint: pairTarget, code: code)
-            statusMessage = L10n.pairedEndpoint(pairTarget)
-            try bridgeService.connect(endpoint: connectTarget)
-            statusMessage = L10n.connectedEndpoint(connectTarget)
-            errorMessage = nil
-            await refreshDevices(showBusy: false, reloadCurrentDirectory: true)
-            await discoverWirelessServices()
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    func disconnectWireless(endpoint: String?) async {
-        isWirelessBusy = true
-        defer { isWirelessBusy = false }
-
-        do {
-            let trimmed = endpoint?.trimmingCharacters(in: .whitespacesAndNewlines)
-            try bridgeService.disconnect(endpoint: trimmed)
-            if let trimmed, !trimmed.isEmpty {
-                statusMessage = L10n.disconnectedEndpoint(trimmed)
-            } else {
-                statusMessage = L10n.disconnectedAll()
-            }
-            errorMessage = nil
-            await refreshDevices(showBusy: false, reloadCurrentDirectory: false)
-        } catch {
-            errorMessage = error.localizedDescription
         }
     }
 

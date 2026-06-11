@@ -7,6 +7,41 @@ import UniformTypeIdentifiers
 // Split out of `DroidFinderViewModel.swift` to respect the 500-line ceiling.
 
 extension DroidFinderViewModel {
+    // MARK: - Share
+
+    /// Pull the file to a temp location, then present the system share picker
+    /// anchored to `anchor`.
+    func share(_ item: DroidFileItem, from anchor: NSView) {
+        guard let selectedDevice else { return }
+        let serial = selectedDevice.id
+        let br = bridgeService
+        statusMessage = L10n.preparingShare(item.name)
+
+        Task.detached(priority: .userInitiated) { [weak self] in
+            let tempDir = FileManager.default.temporaryDirectory
+                .appendingPathComponent("DroidFinder", isDirectory: true)
+            try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+            let dest = tempDir.appendingPathComponent(item.name)
+            try? FileManager.default.removeItem(at: dest)
+
+            do {
+                try br.pullFileToURL(deviceSerial: serial, remotePath: item.fullPath, localURL: dest)
+                await MainActor.run { [weak self] in
+                    self?.statusMessage = L10n.ready()
+                    let picker = NSSharingServicePicker(items: [dest])
+                    picker.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .minY)
+                }
+            } catch {
+                await MainActor.run { [weak self] in
+                    self?.errorMessage = error.localizedDescription
+                    self?.statusMessage = L10n.shareFailed()
+                }
+            }
+        }
+    }
+
+    // MARK: - Drag-out
+
     /// Build NSItemProviders for a batch of items (multi-select drag).
     /// Returns one provider per item; the caller is responsible for handing
     /// them all to a single NSDraggingSession so Finder receives them together.
