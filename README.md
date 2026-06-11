@@ -2,6 +2,8 @@
 
 An Android file access tool that runs on macOS (USB + ADB). Browse your phone's directories and download files to your Mac.
 
+![Main UI](./main_ui.jpeg)
+
 ## Open and Build with Xcode
 
 1. Open the project: `DroidFinder.xcodeproj`
